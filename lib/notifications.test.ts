@@ -9,6 +9,9 @@ import {
   isNotificationSupported,
   markFirstStreamCreated,
   notifyClaimConfirmed,
+  notifyStreamFunded,
+  notifyStreamPaused,
+  notifyStreamWithdrawn,
   notifyStreamMilestone,
   requestNotificationPermission,
   requestNotificationPermissionAfterFirstStream,
@@ -162,5 +165,15 @@ describe('notifications — dispatch (#754)', () => {
     notifyClaimConfirmed('1234567890', '10 XLM');
     expect(notification.instances).toHaveLength(1);
     expect(notification.instances[0].options?.tag).toBe('claim-1234567890');
+  });
+
+  it('dispatches named funding, pause, and withdrawal milestones', () => {
+    const notification = installNotification('granted');
+    notifyStreamFunded('stream-1', '10 XLM');
+    notifyStreamPaused('stream-1');
+    notifyStreamWithdrawn('stream-1', '2 XLM');
+    expect(notification.instances.map((item) => item.title)).toEqual([
+      'Stream Funded', 'Stream Paused', 'Stream Withdrawal Confirmed',
+    ]);
   });
 });

@@ -198,3 +198,27 @@ export function notifyClaimConfirmed(streamId: string, amount?: string): void {
     tag: `claim-${streamId}`,
   });
 }
+
+/** Notify when a stream receives its scheduled deposit. */
+export function notifyStreamFunded(streamId: string, amount?: string): Notification | null {
+  return notifyStreamMilestone('Stream Funded', {
+    body: amount ? `Stream ${streamId.slice(0, 8)}... received ${amount}.` : `Stream ${streamId.slice(0, 8)}... was funded.`,
+    tag: `funded-${streamId}`,
+  });
+}
+
+/** Notify when a stream is paused or resumed by its sender. */
+export function notifyStreamPaused(streamId: string, paused = true): Notification | null {
+  return notifyStreamMilestone(paused ? 'Stream Paused' : 'Stream Resumed', {
+    body: `Stream ${streamId.slice(0, 8)}... was ${paused ? 'paused' : 'resumed'}.`,
+    tag: `pause-${streamId}`,
+  });
+}
+
+/** Notify when streamed funds are withdrawn. */
+export function notifyStreamWithdrawn(streamId: string, amount?: string): Notification | null {
+  return notifyStreamMilestone('Stream Withdrawal Confirmed', {
+    body: amount ? `${amount} was withdrawn from stream ${streamId.slice(0, 8)}....` : `A withdrawal from stream ${streamId.slice(0, 8)}... was confirmed.`,
+    tag: `withdraw-${streamId}`,
+  });
+}
