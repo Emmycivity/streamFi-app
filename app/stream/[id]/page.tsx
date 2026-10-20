@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, Share2 } from "lucide-react";
+import { ArrowLeft, FileText, Plus, Share2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -17,6 +17,7 @@ import { StreamActions } from "@/components/stream/StreamActions";
 import { AddToCalendarButton } from "@/components/stream/AddToCalendarButton";
 import { OperatorInfo } from "@/components/stream/OperatorInfo";
 import { StreamNoteEditor } from "@/components/stream/StreamNoteEditor";
+import { QuickTopUpModal } from "@/components/stream/QuickTopUpModal";
 import { getLatestLedgerSequence } from "@/lib/soroban";
 import type { LedgerAnchor } from "@/lib/ledger";
 import { useWallet } from "@/contexts/WalletContext";
@@ -76,6 +77,8 @@ export default function StreamPage() {
   const [status, setStatus] = useState<StreamStatus>("active");
   // #688 — shareable claim-link QR modal state.
   const [shareOpen, setShareOpen] = useState(false);
+  // #779 — one-click top-up modal (balance auto-fill) state.
+  const [topUpOpen, setTopUpOpen] = useState(false);
 
   // Use stream note hook — only available after streamAddress is resolved
   const noteHook = useStreamNote(streamAddress || "");
@@ -278,6 +281,7 @@ export default function StreamPage() {
   const tokenSymbol =
     tokenByAddress(info.token, "testnet")?.symbol ??
     truncateAddress(info.token);
+  const tokenDecimals = tokenByAddress(info.token, "testnet")?.decimals ?? 7;
 
   // #688 — direct stream claim URL for QR sharing. Built from the current
   // origin on the client so a scanned code opens this exact stream page
@@ -316,6 +320,21 @@ export default function StreamPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge status={status} />
+          {/* One-click top-up with balance auto-fill (#779) — sender only,
+              offered while the stream can still receive funds. */}
+          {isSender &&
+            publicKey &&
+            (status === "active" || status === "paused") && (
+              <button
+                type="button"
+                onClick={() => setTopUpOpen(true)}
+                className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs print:hidden"
+                aria-label="Open one-click top-up"
+              >
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                Top up
+              </button>
+            )}
           {/* Share stream claim link via QR code (#688) */}
           <button
             type="button"
@@ -663,6 +682,7 @@ export default function StreamPage() {
             totalDeposited={totalDeposited}
             withdrawn={info.withdrawn}
             token={tokenSymbol}
+            hideTopUp
             onSuccess={loadStream}
           />
         </div>
@@ -697,6 +717,21 @@ export default function StreamPage() {
           ⚠ This stream has clawback enabled. The sender may reclaim unstreamed
           tokens at any time.
         </p>
+      )}
+
+      {/* One-click top-up modal with balance auto-fill (#779) */}
+      {topUpOpen && streamAddress && info && publicKey && (
+        <QuickTopUpModal
+          streamAddress={streamAddress}
+          sender={publicKey}
+          tokenAddress={info.token}
+          tokenSymbol={tokenSymbol}
+          decimals={tokenDecimals}
+          ratePerSecond={info.ratePerSecond}
+          endTime={info.endTime}
+          onClose={() => setTopUpOpen(false)}
+          onSuccess={loadStream}
+        />
       )}
 
       {/* Share stream claim-link QR modal (#688) */}

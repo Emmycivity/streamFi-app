@@ -84,4 +84,33 @@ describe('NetworkLatencyIndicator', () => {
     expect(pill?.className).toContain('text-red-700');
     mockFetch.mockRestore();
   });
+
+  it('exposes a detailed tooltip with the exact response time (#796)', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { sequence: 123456 },
+          }),
+      } as Response),
+    );
+
+    await act(async () => {
+      root.render(React.createElement(NetworkLatencyIndicator));
+    });
+
+    const tip = container.querySelector('[data-testid="network-latency-tooltip"]');
+    expect(tip).not.toBeNull();
+    expect(tip?.getAttribute('role')).toBe('tooltip');
+    expect(tip?.textContent).toContain('Horizon RPC response time');
+    expect(tip?.textContent).toMatch(/\d+ ms/);
+    expect(tip?.textContent).toContain('Endpoint: soroban-testnet.stellar.org');
+    expect(tip?.textContent).toContain('Ledger: #123456');
+    expect(tip?.textContent).toContain('Last checked:');
+    expect(tip?.textContent).toContain('Polled every 10 s');
+    mockFetch.mockRestore();
+  });
 });
