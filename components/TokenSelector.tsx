@@ -203,9 +203,22 @@ export function TokenSelector({
       )}
 
       {!showValidationError && status === 'resolved' && token && (
-        <p className="text-xs text-gray-500 mt-1" role="status" aria-live="polite">
+        <p className="text-xs text-gray-500 mt-1 flex items-center gap-2" role="status" aria-live="polite">
           <span aria-hidden="true">✓ </span>
-          {token.symbol} — {token.name}
+          <span>{token.symbol} — {token.name}</span>
+          {typeof token.priceChange24h === 'number' && (
+            <span
+              aria-label={`24h price change ${token.priceChange24h >= 0 ? 'up' : 'down'} ${Math.abs(token.priceChange24h).toFixed(2)} percent`}
+              className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                token.priceChange24h >= 0
+                  ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
+                  : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+              }`}
+            >
+              {token.priceChange24h >= 0 ? '+' : ''}
+              {token.priceChange24h.toFixed(2)}%
+            </span>
+          )}
         </p>
       )}
 
