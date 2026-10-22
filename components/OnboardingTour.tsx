@@ -1,27 +1,52 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useOnboarding, ONBOARDING_STEPS } from '@/hooks/useOnboarding';
+import {
+  hasCompletedOnboarding,
+  markOnboardingCompleted,
+} from '@/lib/onboarding-storage';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 
 export function OnboardingTour() {
   const { isActive, currentStepIndex, currentStep, nextStep, prevStep, skip } = useOnboarding();
 
-  if (!isActive || !currentStep) return null;
+  // Persisted completed-tour flag (#798). Checked on page mount so the tour
+  // is not shown again in incognito or cross-tab sessions, and re-checked
+  // whenever the tour is re-activated (e.g. "Restart Tour" in settings,
+  // which clears the flag first).
+  const [hasCompleted, setHasCompleted] = useState<boolean | null>(null);
+  useEffect(() => {
+    setHasCompleted(hasCompletedOnboarding());
+  }, [isActive]);
+
+  if (hasCompleted !== false || !isActive || !currentStep) return null;
 
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === ONBOARDING_STEPS.length - 1;
   const stepNumber = currentStepIndex + 1;
   const totalSteps = ONBOARDING_STEPS.length;
 
+  // Persist the completed-tour flag whenever the tour is dismissed (#798).
+  const handleSkip = () => {
+    markOnboardingCompleted();
+    skip();
+  };
+
+  const handleNext = () => {
+    if (isLastStep) markOnboardingCompleted();
+    nextStep();
+  };
+
   return (
     <Modal
-      onClose={skip}
+      onClose={handleSkip}
       title={currentStep.title}
       headerAction={
         <button
           type="button"
-          onClick={skip}
+          onClick={handleSkip}
           aria-label="Skip tour"
           className="text-xs font-medium text-gray-500 underline underline-offset-2 hover:text-black dark:text-gray-400 dark:hover:text-white transition-colors"
         >
@@ -60,7 +85,7 @@ export function OnboardingTour() {
         <div className="flex gap-2 pt-4">
           <Button
             variant="secondary"
-            onClick={skip}
+            onClick={handleSkip}
             className="flex-1"
           >
             Skip
@@ -78,7 +103,7 @@ export function OnboardingTour() {
 
           <Button
             variant="primary"
-            onClick={nextStep}
+            onClick={handleNext}
             className="flex-1"
           >
             {isLastStep ? 'Finish' : 'Next'}
