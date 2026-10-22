@@ -5,6 +5,10 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- `OfflineTransactionSync` — floating badge shows `N drafts queued offline` (count pill, black and white,
+  full sentence as the status region's accessible name) and refreshes when another tab queues or
+  flushes a draft, via `storage` events on the queue key; label from the new
+  `queuedDraftsLabel()` in `lib/offline-transactions.ts` (#795)
 - `lib/i18n/` — i18next/react-i18next bootstrap and a `dashboard` message namespace;
   `/dashboard` is fully externalized as the proof-of-concept page for the string-externalization
   migration (#558)
