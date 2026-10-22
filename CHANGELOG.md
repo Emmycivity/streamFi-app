@@ -5,7 +5,10 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
-- `/streams/compare` - comparison metrics for remaining balance and stream completion percentage: a static completion bar so columns can be compared at a glance, the remaining balance, and a projected completion timestamp that lands later than the scheduled end for paused streams (#783)
+- `/stream/[id]` — **Export History** downloads a CSV or JSON snapshot of the loaded stream
+  details and balances for record-keeping (#780)
+- `/streams` — **Claim All** submits individual withdrawals for every receiving stream with a
+  claimable balance, reports per-stream failures, and refreshes stream data afterward (#782)
 - `lib/i18n/` — i18next/react-i18next bootstrap and a `dashboard` message namespace;
   `/dashboard` is fully externalized as the proof-of-concept page for the string-externalization
   migration (#558)

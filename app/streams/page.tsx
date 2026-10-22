@@ -7,6 +7,7 @@ import { Plus, AlertCircle, Columns, Pause, Wallet, X, Download } from "lucide-r
 import { useWallet } from "@/contexts/WalletContext";
 import { StreamCard } from "@/components/stream/StreamCard";
 import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
+import { Modal } from "@/components/ui/Modal";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
 import { getStreamAddress, getStreamInfo, getWithdrawable, pause, cancel, withdraw, type StreamInfo } from '@/lib/stream';
 import { readSnapshot, saveSnapshot } from "@/lib/offline-cache";
@@ -111,6 +112,8 @@ function StreamsView() {
   const [selected, setSelected] = useState<string[]>([]);
   const [batchPending, setBatchPending] = useState(false);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
+  const [claimConfirmOpen, setClaimConfirmOpen] = useState(false);
+  const [claimProgress, setClaimProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -270,6 +273,77 @@ function StreamsView() {
     finally { setBatchPending(false); }
   }
 
+  async function claimAll() {
+    if (!publicKey || !signTx || batchPending || receiving.length === 0) return;
+    setClaimConfirmOpen(false);
+    setBatchPending(true);
+    setBatchMessage(null);
+    setClaimProgress({ done: 0, total: receiving.length });
+
+    let claimedCount = 0;
+    const failures: string[] = [];
+
+    try {
+      for (const row of receiving) {
+        try {
+          const amount = await getWithdrawable(publicKey, row.address);
+          if (amount > 0n) {
+            await withdraw(publicKey, row.address, amount, signTx);
+            claimedCount++;
+          }
+        } catch (error) {
+          failures.push(
+            `#${row.id}: ${error instanceof Error ? error.message : 'Withdrawal failed'}`,
+          );
+        } finally {
+          setClaimProgress((progress) =>
+            progress ? { ...progress, done: progress.done + 1 } : progress,
+          );
+        }
+      }
+
+      if (claimedCount > 0) {
+        try {
+          const refreshed = await loadRows(publicKey, "recipient", Math.floor(Date.now() / 1000));
+          setReceiving(refreshed.rows);
+          void saveSnapshot(`streams:${publicKey}`, {
+            receiving: refreshed.rows,
+            sending,
+          });
+          setPartialError(
+            refreshed.failedCount > 0
+              ? `${refreshed.failedCount} receiving stream${refreshed.failedCount === 1 ? "" : "s"} couldn’t refresh`
+              : null,
+          );
+        } catch (error) {
+          setPartialError(
+            `Withdrawals completed, but streams couldn’t refresh: ${
+              error instanceof Error ? error.message : 'Failed to reload streams'
+            }`,
+          );
+        }
+      }
+
+      if (failures.length > 0) {
+        const shownFailures = failures.slice(0, 3).join('; ');
+        const remainingCount = failures.length - 3;
+        setBatchMessage(
+          `Claimed ${claimedCount} streams. ${failures.length} couldn’t be processed: ${shownFailures}` +
+          (remainingCount > 0 ? `; and ${remainingCount} more` : ''),
+        );
+      } else if (claimedCount === 0) {
+        setBatchMessage('No claimable balances are available.');
+      } else {
+        setBatchMessage(
+          `Claimed all ${claimedCount} claimable stream${claimedCount === 1 ? '' : 's'}.`,
+        );
+      }
+    } finally {
+      setClaimProgress(null);
+      setBatchPending(false);
+    }
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       {/* Header */}
@@ -342,8 +416,50 @@ function StreamsView() {
               </option>
             ))}
           </select>
+          {tab === "receiving" && (
+            <button
+              type="button"
+              onClick={() => setClaimConfirmOpen(true)}
+              disabled={batchPending || loading || receiving.length === 0}
+              title="Submits one withdrawal transaction per claimable stream."
+              className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Wallet className="w-4 h-4" aria-hidden="true" />
+              {batchPending && claimProgress
+                ? `Claiming ${claimProgress.done}/${claimProgress.total}...`
+                : "Claim All"}
+            </button>
+          )}
         </div>
       </div>
+      {claimConfirmOpen && (
+        <Modal
+          title="Confirm Claim All"
+          onClose={() => setClaimConfirmOpen(false)}
+        >
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            We’ll check all {receiving.length} receiving streams and submit a separate
+            withdrawal for each claimable balance. You’ll need to approve each transaction
+            in your wallet, and each transaction has its own network fee.
+          </p>
+          <div className="flex justify-end gap-2 mt-5">
+            <button
+              type="button"
+              onClick={() => setClaimConfirmOpen(false)}
+              className="btn-secondary text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void claimAll()}
+              className="btn-primary text-sm"
+            >
+              Continue
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Compare selection bar */}
       {selected.length > 0 && (

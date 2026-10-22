@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, Share2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Download, FileText, Share2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -32,6 +32,7 @@ import { fromStroops, formatTimestamp, truncateAddress } from "@/lib/format";
 import { tokenByAddress } from "@/lib/tokens";
 import { tryGetFactoryContractId } from "@/lib/env";
 import { useSettings, MIN_REFRESH_INTERVAL_S } from "@/hooks/useSettings";
+import { downloadCsv, toCsv } from "@/lib/csv";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -287,6 +288,47 @@ export default function StreamPage() {
       ? `${window.location.origin}/stream/${id}`
       : `/stream/${id}`;
 
+  const exportRecord = {
+    streamId: id,
+    streamAddress,
+    status,
+    sender: info.sender,
+    recipient: info.recipient,
+    tokenAddress: info.token,
+    tokenSymbol,
+    ratePerSecondStroops: info.ratePerSecond.toString(),
+    startTime: new Date(info.startTime * 1000).toISOString(),
+    endTime: info.endTime > 0 ? new Date(info.endTime * 1000).toISOString() : null,
+    totalDepositedStroops: totalDeposited.toString(),
+    withdrawnStroops: info.withdrawn.toString(),
+    withdrawableStroops: withdrawable.toString(),
+    exportedAt: new Date().toISOString(),
+  };
+  const exportFilename = `conduit-stream-${id}-history-${new Date().toISOString().slice(0, 10)}`;
+  const handleExportCsv = () => {
+    const fields = Object.keys(exportRecord) as (keyof typeof exportRecord)[];
+    downloadCsv(
+      `${exportFilename}.csv`,
+      toCsv(
+        fields,
+        [fields.map((field) => exportRecord[field])],
+      ),
+    );
+  };
+  const handleExportJson = () => {
+    const blob = new Blob([JSON.stringify(exportRecord, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${exportFilename}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div
       className="max-w-2xl mx-auto px-4 py-10 print-receipt"
@@ -344,6 +386,29 @@ export default function StreamPage() {
             <FileText className="w-3.5 h-3.5" aria-hidden="true" />
             PDF
           </button>
+          <details className="relative inline-block print:hidden">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-900 [&::-webkit-details-marker]:hidden">
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
+              Export History
+              <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-40 rounded border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-800 dark:bg-gray-950">
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-900"
+              >
+                Download CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleExportJson}
+                className="block w-full rounded px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-900"
+              >
+                Download JSON
+              </button>
+            </div>
+          </details>
           {/* Add the stream's end date to an external calendar (#566) — only
               bounded streams have an end date to schedule. */}
           {info.endTime > 0 && (
