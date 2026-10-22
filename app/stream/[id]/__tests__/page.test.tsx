@@ -49,6 +49,10 @@ vi.mock('@/components/stream/StreamActions', () => ({
   StreamActions: ({ token }: { token: string }) =>
     React.createElement('div', { 'data-testid': 'stream-actions' }, token),
 }));
+vi.mock('@/components/stream/QuickTopUpModal', () => ({
+  QuickTopUpModal: () =>
+    React.createElement('div', { 'data-testid': 'quick-topup-modal' }),
+}));
 vi.mock('@/components/stream/AddToCalendarButton', () => ({
   AddToCalendarButton: ({ streamId, endTime }: { streamId: string; endTime: number }) =>
     React.createElement('div', {

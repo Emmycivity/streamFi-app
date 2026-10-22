@@ -9,6 +9,14 @@
     "totalReceived": "Total recibido",
     "senders": "Remitentes"
   },
+  "kpi": {
+    "perHour": "/ hora",
+    "totalStreamedSub_one": "A {{count}} flujo",
+    "totalStreamedSub_other": "A {{count}} flujos",
+    "runRateSub_one": "A {{count}} flujo activo",
+    "runRateSub_other": "A {{count}} flujos activos",
+    "noActivity": "Sin flujos activos"
+  },
   "connectWallet": "Conecta tu billetera para ver tus flujos.",
   "loadError": "No se pudieron cargar los flujos. Inténtalo de nuevo.",
   "partialError_one": "No se pudo cargar {{count}} flujo",
