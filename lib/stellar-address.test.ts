@@ -1,10 +1,32 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import {
   isValidStellarPublicKey,
   isValidStellarContract,
   isValidStellarAddress,
+  isFederationAddress,
+  parseFederationAddress,
+  resolveFederationAddress,
 } from './stellar-address';
+
+describe('federated recipient addresses (#748)', () => {
+  it('recognizes and parses user*domain addresses', () => {
+    expect(isFederationAddress('bob*conduit.finance')).toBe(true);
+    expect(parseFederationAddress(' bob*conduit.finance ')).toEqual({ account: 'bob', domain: 'conduit.finance' });
+    expect(isFederationAddress('not-an-address')).toBe(false);
+  });
+
+  it('resolves through the federation endpoint and validates the account', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+      JSON.stringify({ account_id: 'GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ));
+    await expect(resolveFederationAddress('bob*conduit.finance', { endpoint: 'https://resolver.test/federation' }))
+      .resolves.toBe('GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR');
+    expect(fetchMock.mock.calls[0]?.[0].toString()).toContain('q=bob*conduit.finance');
+    fetchMock.mockRestore();
+  });
+});
 
 describe('stellar-address', () => {
   // Known valid addresses

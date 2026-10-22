@@ -15,6 +15,31 @@ export function fromStroops(stroops: bigint, decimals = 7): string {
   return decimals > 0 ? `${negative ? "-" : ""}${whole}.${trimmed}` : `${negative ? "-" : ""}${whole}`;
 }
 
+/**
+ * Format a token's smallest-unit amount using its own decimal precision.
+ * Unlike `fromStroops`, this name makes it clear that the input is not
+ * necessarily Stellar's seven-decimal stroop representation.
+ */
+export function formatUnits(amount: bigint | string, decimals: number): string {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 18) {
+    throw new Error('Token decimals must be an integer between 0 and 18');
+  }
+
+  const raw = typeof amount === 'bigint' ? amount.toString() : amount.trim();
+  if (!/^[+-]?\d+$/.test(raw)) {
+    throw new Error('Amount must be an integer string or bigint');
+  }
+
+  const negative = raw.startsWith('-');
+  const digits = raw.replace(/^[+-]/, '').replace(/^0+(?=\d)/, '');
+  if (decimals === 0) return `${negative ? '-' : ''}${digits}`;
+
+  const padded = digits.padStart(decimals + 1, '0');
+  const whole = padded.slice(0, -decimals);
+  const fraction = padded.slice(-decimals).replace(/0+$/, '');
+  return `${negative ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`;
+}
+
 /** 
  * Convert a display amount string to stroops bigint.
  * 

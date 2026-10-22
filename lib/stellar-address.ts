@@ -28,12 +28,22 @@ export function isValidStellarAddress(address: string): boolean {
 
 export interface FederationResolveOptions { signal?: AbortSignal; endpoint?: string; }
 
+export function isFederationAddress(value: string): boolean {
+  return /^[^*\s]+\*[A-Za-z0-9.-]+$/.test(value.trim());
+}
+
+export function parseFederationAddress(value: string): { account: string; domain: string } {
+  const match = value.trim().match(/^([^*\s]+)\*([A-Za-z0-9.-]+)$/);
+  if (!match) throw new Error('Invalid federation address (expected user*domain.com)');
+  return { account: match[1], domain: match[2] };
+}
+
 /** Resolve a Stellar federation address such as `user*domain.com`. */
 export async function resolveFederationAddress(federationAddress: string, options: FederationResolveOptions = {}): Promise<string> {
-  const match = federationAddress.trim().match(/^([^*]+)\*([^*]+)$/);
-  if (!match) throw new Error('Invalid federation address (expected user*domain.com)');
-  const endpoint = options.endpoint ?? `https://${match[2]}/federation`;
+  const { domain } = parseFederationAddress(federationAddress);
+  const endpoint = options.endpoint ?? `https://${domain}/federation`;
   const url = new URL(endpoint);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Federation endpoint must use HTTP or HTTPS');
   url.searchParams.set('q', federationAddress.trim());
   url.searchParams.set('type', 'name');
   const response = await fetch(url, { signal: options.signal, headers: { Accept: 'application/json' } });

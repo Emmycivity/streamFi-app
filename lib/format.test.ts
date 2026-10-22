@@ -8,7 +8,25 @@ import {
   truncateAddress,
   wouldRateTruncateToZero,
   formatAmount,
+  formatUnits,
 } from './format.js';
+
+describe('formatUnits (#750)', () => {
+  it('formats arbitrary token decimals without floating-point loss', () => {
+    expect(formatUnits('1234567890123456789', 18)).toBe('1.234567890123456789');
+    expect(formatUnits(123456n, 6)).toBe('0.123456');
+  });
+
+  it('supports zero decimals, negatives, and trims insignificant zeroes', () => {
+    expect(formatUnits('1000', 0)).toBe('1000');
+    expect(formatUnits('-105000', 4)).toBe('-10.5');
+  });
+
+  it('rejects unsupported precision and malformed amounts', () => {
+    expect(() => formatUnits('1.2', 6)).toThrow();
+    expect(() => formatUnits('1', 19)).toThrow();
+  });
+});
 
 describe('wouldRateTruncateToZero', () => {
   it('is true for a small deposit over the default 30-day duration (issue #243)', () => {

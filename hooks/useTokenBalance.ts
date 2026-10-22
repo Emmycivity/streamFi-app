@@ -2,7 +2,12 @@
 
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 
-export const BALANCE_DEBOUNCE_MS = 2000;
+/** Token balance data stays fresh for 15 seconds before SWR revalidation. */
+export const TOKEN_BALANCE_STALE_TIME_MS = 15_000;
+/** Public alias for callers that want to configure the cache duration. */
+export const BALANCE_CACHE_TTL_MS = TOKEN_BALANCE_STALE_TIME_MS;
+/** Kept for compatibility with callers that used the old debounce name. */
+export const BALANCE_DEBOUNCE_MS = TOKEN_BALANCE_STALE_TIME_MS;
 
 export const tokenBalanceKey = (address: string, token: string) =>
   ['tokenBalance', address, token] as const;
@@ -15,14 +20,14 @@ interface BalanceCacheEntry {
 const balanceDebounceCache = new Map<string, BalanceCacheEntry>();
 
 /**
- * Deduplicate and debounce rapid token balance queries within a 2000ms window (#812).
+ * Deduplicate rapid token balance queries within the SWR window (#749, #812).
  * Prevents redundant parallel RPC queries when multiple components mount simultaneously.
  */
 export function getCachedTokenBalanceFetch(
   address: string,
   token: string,
   fetchFn: () => Promise<bigint>,
-  ttlMs = BALANCE_DEBOUNCE_MS,
+  ttlMs = TOKEN_BALANCE_STALE_TIME_MS,
 ): Promise<bigint> {
   const key = `${address}:${token}`;
   const now = Date.now();
@@ -82,7 +87,8 @@ export function useTokenBalance(
         fetchBalance(address as string, token as string),
       ),
     enabled: !!address && !!token,
-    staleTime: BALANCE_DEBOUNCE_MS,
+    staleTime: TOKEN_BALANCE_STALE_TIME_MS,
+    gcTime: TOKEN_BALANCE_STALE_TIME_MS * 4,
   });
 }
 

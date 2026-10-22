@@ -10,6 +10,7 @@ import {
   useWalletBalance,
 } from '../useWalletBalance';
 import {
+  BALANCE_CACHE_TTL_MS,
   BALANCE_DEBOUNCE_MS,
   clearTokenBalanceCache,
   getCachedTokenBalanceFetch,
@@ -17,6 +18,17 @@ import {
   tokenBalanceKey,
   useTokenBalance,
 } from '../useTokenBalance';
+
+describe('token balance SWR cache (#749)', () => {
+  it('uses a fifteen-second cache window and deduplicates reads', async () => {
+    expect(BALANCE_CACHE_TTL_MS).toBe(15_000);
+    expect(BALANCE_DEBOUNCE_MS).toBe(15_000);
+    const fetchBalance = vi.fn().mockResolvedValue(42n);
+    await getCachedTokenBalanceFetch('GABC', 'CTOKEN', fetchBalance);
+    await getCachedTokenBalanceFetch('GABC', 'CTOKEN', fetchBalance);
+    expect(fetchBalance).toHaveBeenCalledTimes(1);
+  });
+});
 
 vi.mock('@/lib/env', () => ({ getHorizonUrl: () => 'https://horizon.test' }));
 
