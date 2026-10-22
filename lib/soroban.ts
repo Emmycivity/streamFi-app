@@ -19,6 +19,7 @@
  */
 
 import {
+  Address,
   Contract,
   Keypair,
   SorobanRpc,
@@ -873,4 +874,31 @@ export async function checkRecipientBalance(
     clearTimeout(timeoutId);
     options?.signal?.removeEventListener('abort', onAbort);
   }
+}
+
+/**
+ * Read a SEP-41 `balance_of` from a token contract for `owner` (#779).
+ *
+ * Returns the balance in the token's smallest unit (stroops for 7-decimal
+ * tokens); format with `fromStroops(balance, token.decimals)` for display.
+ * Used by the quick top-up modal to auto-fill the sender's available balance.
+ */
+export async function getTokenBalance(
+  owner: string,
+  tokenAddress: string,
+  options?: { signal?: AbortSignal },
+): Promise<bigint> {
+  if (!owner || !tokenAddress) {
+    throw new Error(
+      'Missing required arguments for getTokenBalance: owner and tokenAddress are both required',
+    );
+  }
+  const result = await simulateReadOnly(
+    owner,
+    tokenAddress,
+    'balance_of',
+    [new Address(owner).toScVal()],
+    options,
+  );
+  return scValToI128(result);
 }

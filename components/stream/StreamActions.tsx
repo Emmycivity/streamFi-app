@@ -32,6 +32,9 @@ interface StreamActionsProps {
   withdrawn?:      bigint;
   token:           string;
   onSuccess?:      () => void;
+  /** Hide the built-in top-up button — the stream page renders its own
+   *  one-click top-up with balance auto-fill in the header (#779). */
+  hideTopUp?:      boolean;
 }
 
 /**
@@ -41,6 +44,7 @@ interface StreamActionsProps {
 export function StreamActions({
   streamAddress, status, clawbackEnabled,
   isSender, isRecipient, withdrawable, totalDeposited = withdrawable, withdrawn = 0n, token, onSuccess,
+  hideTopUp = false,
 }: StreamActionsProps) {
   const { publicKey, signTx } = useWallet();
   const { developerMode } = useSettings();
@@ -205,8 +209,9 @@ export function StreamActions({
           </div>
         )}
 
-        {/* Top up — sender, any non-terminal state */}
-        {isSender && canAct && (
+        {/* Top up — sender, any non-terminal state. Suppressed when the page
+            offers its own one-click top-up modal with auto-fill (#779). */}
+        {isSender && canAct && !hideTopUp && (
           <button
             className="btn-secondary w-full"
             onClick={() => setTopUpOpen(true)}

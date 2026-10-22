@@ -9,6 +9,14 @@
     "totalReceived": "Total recebido",
     "senders": "Remetentes"
   },
+  "kpi": {
+    "perHour": "/ hora",
+    "totalStreamedSub_one": "Em {{count}} fluxo",
+    "totalStreamedSub_other": "Em {{count}} fluxos",
+    "runRateSub_one": "{{count}} fluxo ativo",
+    "runRateSub_other": "{{count}} fluxos ativos",
+    "noActivity": "Sem fluxos ativos"
+  },
   "connectWallet": "Conecte sua carteira para ver seus fluxos.",
   "loadError": "Não foi possível carregar os fluxos. Tente novamente.",
   "partialError_one": "Não foi possível carregar {{count}} fluxo",

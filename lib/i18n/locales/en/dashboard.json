@@ -9,6 +9,14 @@
     "totalValueStreamed": "Total value streamed",
     "expiringSoon": "Expiring soon"
   },
+  "kpi": {
+    "perHour": "/ hour",
+    "totalStreamedSub_one": "Across {{count}} stream",
+    "totalStreamedSub_other": "Across {{count}} streams",
+    "runRateSub_one": "Across {{count}} active stream",
+    "runRateSub_other": "Across {{count}} active streams",
+    "noActivity": "No active streams"
+  },
   "connectWallet": "Connect your wallet to see your streams.",
   "loadError": "Failed to load streams. Please try again.",
   "partialError_one": "{{count}} stream couldn’t load",
