@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getRpcUrl } from '@/lib/env';
+import { Tooltip } from './ui/Tooltip';
 
 interface LatencyState {
   latencyMs: number | null;
@@ -101,33 +102,46 @@ export function NetworkLatencyIndicator() {
     offline: 'bg-red-500',
   }[state.status];
 
-  const tooltip =
-    state.status === 'offline'
-      ? 'RPC unreachable'
-      : state.ledgerHeight
-        ? `Latency: ${state.latencyMs}ms | Ledger #${state.ledgerHeight}`
-        : `Latency: ${state.latencyMs}ms`;
+  const tooltipContent =
+    state.status === 'offline' ? (
+      'RPC unreachable'
+    ) : (
+      <div className="space-y-1">
+        <div>Horizon RPC Response</div>
+        <div className="font-mono text-xs opacity-90">{state.latencyMs}ms</div>
+        {state.ledgerHeight && (
+          <div className="text-xs opacity-90">Ledger #{state.ledgerHeight}</div>
+        )}
+      </div>
+    );
 
   return (
-    <span
-      className={`latency-pill inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-medium transition-colors ${colorStyles}`}
-      title={tooltip}
-      aria-label={tooltip}
-    >
+    <Tooltip content={tooltipContent} side="bottom">
       <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotColors}`}
-        aria-hidden="true"
-      />
-      {state.status === 'offline' ? (
-        <span>offline</span>
-      ) : (
-        <>
-          <span>{state.latencyMs}ms</span>
-          {state.ledgerHeight ? (
-            <span className="opacity-60">#{state.ledgerHeight}</span>
-          ) : null}
-        </>
-      )}
-    </span>
+        className={`latency-pill inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-medium transition-colors ${colorStyles}`}
+        aria-label={
+          state.status === 'offline'
+            ? 'RPC unreachable'
+            : state.ledgerHeight
+              ? `Latency: ${state.latencyMs}ms | Ledger #${state.ledgerHeight}`
+              : `Latency: ${state.latencyMs}ms`
+        }
+      >
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotColors}`}
+          aria-hidden="true"
+        />
+        {state.status === 'offline' ? (
+          <span>offline</span>
+        ) : (
+          <>
+            <span>{state.latencyMs}ms</span>
+            {state.ledgerHeight ? (
+              <span className="opacity-60">#{state.ledgerHeight}</span>
+            ) : null}
+          </>
+        )}
+      </span>
+    </Tooltip>
   );
 }
