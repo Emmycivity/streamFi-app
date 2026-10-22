@@ -40,17 +40,78 @@ export function CommandPalette() {
     setActiveIndex(0);
   }, []);
 
+  // Track if 'g' key was pressed for navigation shortcuts.
+  const gKeyPressedRef = useRef(false);
+  const gKeyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Cmd/Ctrl+K toggles the palette from anywhere in the app.
+  // g+d, g+c, g+s, g+p navigate directly to Dashboard, Create, Streams, and Profile.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+K toggles the palette
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((o) => !o);
+        return;
+      }
+
+      // Handle 'g' key for navigation shortcuts
+      if (e.key.toLowerCase() === "g" && !gKeyPressedRef.current) {
+        gKeyPressedRef.current = true;
+
+        // Clear any existing timeout
+        if (gKeyTimeoutRef.current) {
+          clearTimeout(gKeyTimeoutRef.current);
+        }
+
+        // Reset 'g' key state after 1 second
+        gKeyTimeoutRef.current = setTimeout(() => {
+          gKeyPressedRef.current = false;
+        }, 1000);
+        return;
+      }
+
+      // Handle navigation shortcuts when 'g' was recently pressed
+      if (gKeyPressedRef.current && !e.ctrlKey && !e.metaKey) {
+        const key = e.key.toLowerCase();
+        let targetHref: string | null = null;
+
+        switch (key) {
+          case "d":
+            targetHref = "/dashboard";
+            break;
+          case "c":
+            targetHref = "/create";
+            break;
+          case "s":
+            targetHref = "/streams";
+            break;
+          case "p":
+            targetHref = "/profile";
+            break;
+          default:
+            break;
+        }
+
+        if (targetHref) {
+          e.preventDefault();
+          gKeyPressedRef.current = false;
+          if (gKeyTimeoutRef.current) {
+            clearTimeout(gKeyTimeoutRef.current);
+          }
+          router.push(targetHref);
+        }
       }
     };
+
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (gKeyTimeoutRef.current) {
+        clearTimeout(gKeyTimeoutRef.current);
+      }
+    };
+  }, [router]);
 
   // Focus the search input on open; restore focus to whatever triggered it on close.
   useEffect(() => {
@@ -146,7 +207,7 @@ export function CommandPalette() {
               setActiveIndex(0);
             }}
             onKeyDown={onInputKeyDown}
-            placeholder="Jump to a page or enter a stream ID…"
+            placeholder="Jump to a page or enter a stream ID… (g+d/c/s/p for quick nav)"
             aria-label="Command palette search"
             role="combobox"
             aria-expanded="true"

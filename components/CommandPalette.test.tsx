@@ -133,4 +133,158 @@ describe("CommandPalette", () => {
     });
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  describe("navigation shortcuts (g+d, g+c, g+s, g+p)", () => {
+    it("navigates to Dashboard with g+d", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "d" });
+        expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("navigates to Create with g+c", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "c" });
+        expect(mockPush).toHaveBeenCalledWith("/create");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("navigates to Streams with g+s", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "s" });
+        expect(mockPush).toHaveBeenCalledWith("/streams");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("navigates to Profile with g+p", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "p" });
+        expect(mockPush).toHaveBeenCalledWith("/profile");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("handles uppercase g+D shortcuts", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "G" });
+        fireKey(document, { key: "D" });
+        expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not trigger shortcut if g key timeout expires", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        // Fast forward 1100ms to exceed the 1 second timeout
+        act(() => {
+          vi.advanceTimersByTime(1100);
+        });
+        fireKey(document, { key: "d" });
+        expect(mockPush).not.toHaveBeenCalledWith("/dashboard");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not trigger shortcut if Ctrl is held with g+d", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "d", ctrlKey: true });
+        // Should not navigate because Ctrl is held
+        expect(mockPush).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not trigger shortcut if Meta is held with g+s", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "s", metaKey: true });
+        // Should not navigate because Meta is held
+        expect(mockPush).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("allows re-pressing g after a successful shortcut", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "d" });
+        expect(mockPush).toHaveBeenCalledWith("/dashboard");
+        mockPush.mockClear();
+
+        // Should be able to trigger another shortcut
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "s" });
+        expect(mockPush).toHaveBeenCalledWith("/streams");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("ignores invalid keys after g press", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "x" }); // Invalid key
+        expect(mockPush).not.toHaveBeenCalled();
+        // g state should still be active within the timeout
+        fireKey(document, { key: "d" });
+        expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not interfere with Cmd/Ctrl+K palette toggle", () => {
+      vi.useFakeTimers();
+      try {
+        render();
+        // Open palette with Ctrl+K
+        fireKey(document, { key: "k", ctrlKey: true });
+        expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+
+        // Pressing g should not trigger shortcuts while palette is open
+        fireKey(document, { key: "g" });
+        fireKey(document, { key: "d" });
+        expect(mockPush).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });
