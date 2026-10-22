@@ -12,8 +12,9 @@ import {
   resolveTokenBySymbol,
   networksForSymbol,
   networksForAddress,
+  fetchSep41Metadata,
 } from './tokens';
-import { StrKey, Keypair } from '@stellar/stellar-sdk';
+import { StrKey, Keypair, nativeToScVal } from '@stellar/stellar-sdk';
 import { resetTokenAllowanceGateway } from './token-allowance-gateway';
 import * as soroban from './soroban';
 
@@ -200,5 +201,61 @@ describe('resolveTokenBySymbol / cross-network helpers (#429)', () => {
     const eurc = TOKENS_TESTNET.find(t => t.symbol === 'EURC');
     expect(networksForAddress(eurc!.address!)).toEqual(['testnet']);
     expect(networksForAddress('CNOTATOKEN')).toEqual([]);
+  });
+});
+
+describe('fetchSep41Metadata (#789)', () => {
+  beforeEach(() => {
+    vi.mocked(soroban.simulateReadOnly).mockReset();
+  });
+
+  function mockMetadata(name: unknown, symbol: unknown, decimals: unknown) {
+    vi.mocked(soroban.simulateReadOnly).mockImplementation(async (_src, _id, method) => {
+      if (method === 'name') return nativeToScVal(name);
+      if (method === 'symbol') return nativeToScVal(symbol);
+      return nativeToScVal(decimals, { type: 'u32' });
+    });
+  }
+
+  it('reads name, symbol and decimals and marks the token unverified', async () => {
+    mockMetadata('Day One Token', 'DAY1', 7);
+    const token = await fetchSep41Metadata(VALID_TOKEN, VALID_SOURCE);
+    expect(token).toEqual({
+      name: 'Day One Token',
+      symbol: 'DAY1',
+      decimals: 7,
+      address: VALID_TOKEN,
+      verified: false,
+    });
+    const methods = vi.mocked(soroban.simulateReadOnly).mock.calls.map(c => c[2]);
+    expect(methods.sort()).toEqual(['decimals', 'name', 'symbol']);
+    expect(vi.mocked(soroban.simulateReadOnly).mock.calls[0]![0]).toBe(VALID_SOURCE);
+  });
+
+  it('rejects an invalid contract address before any RPC call', async () => {
+    await expect(fetchSep41Metadata('CNOTVALID', VALID_SOURCE)).rejects.toThrow(/valid Soroban contract/);
+    expect(soroban.simulateReadOnly).not.toHaveBeenCalled();
+  });
+
+  it('requires a funded source account (connected wallet)', async () => {
+    await expect(fetchSep41Metadata(VALID_TOKEN, '')).rejects.toThrow(/Connect a wallet/);
+    expect(soroban.simulateReadOnly).not.toHaveBeenCalled();
+  });
+
+  it('wraps simulation failures with a SEP-41 hint', async () => {
+    vi.mocked(soroban.simulateReadOnly).mockRejectedValue(new Error('Simulation error: MissingValue'));
+    await expect(fetchSep41Metadata(VALID_TOKEN, VALID_SOURCE)).rejects.toThrow(
+      /may not be a SEP-41 token \(Simulation error: MissingValue\)/,
+    );
+  });
+
+  it('rejects empty metadata strings', async () => {
+    mockMetadata('Token', '   ', 7);
+    await expect(fetchSep41Metadata(VALID_TOKEN, VALID_SOURCE)).rejects.toThrow(/invalid token symbol/);
+  });
+
+  it('rejects out-of-range decimals', async () => {
+    mockMetadata('Token', 'TKN', 255);
+    await expect(fetchSep41Metadata(VALID_TOKEN, VALID_SOURCE)).rejects.toThrow(/invalid token decimals/);
   });
 });
