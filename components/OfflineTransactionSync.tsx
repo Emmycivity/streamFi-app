@@ -69,15 +69,22 @@ export function OfflineTransactionSync() {
 
   return (
     <div
-      className="fixed top-4 right-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs px-3 py-2 rounded shadow-lg z-50"
+      className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded border border-black bg-white px-3 py-2 text-xs text-black shadow-lg dark:border-white dark:bg-black dark:text-white"
       role="status"
       aria-live="polite"
+      aria-label={showRetryPrompt ? undefined : label}
     >
       {showRetryPrompt ? (
         <span>Connection restored. Retrying {queuedCount} queued transaction{queuedCount === 1 ? '' : 's'}…</span>
       ) : (
         <>
-          <span>{queuedCount}</span> <span>{words}</span>
+          <span
+            aria-hidden="true"
+            className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-black px-1.5 font-semibold tabular-nums text-white dark:bg-white dark:text-black"
+          >
+            {queuedCount}
+          </span>{' '}
+          <span aria-hidden="true">{words}</span>
         </>
       )}
     </div>
