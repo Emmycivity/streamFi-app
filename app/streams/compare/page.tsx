@@ -40,6 +40,37 @@ async function loadColumn(publicKey: string, id: string): Promise<Column> {
 
 // ── Table rows ───────────────────────────────────────────────────────────────
 
+/**
+ * A static completion bar, filled to the stream's completion percentage.
+ *
+ * `StreamProgressBar` animates each stream on its own schedule, so two bars in
+ * the same grid are not at the same visual state at the same moment. This bar
+ * is driven purely by the completion percentage, which makes the columns
+ * directly comparable at a glance.
+ *
+ * The accessibility contract matches `StreamProgressBar`: `role="progressbar"`
+ * with `aria-valuenow` / `aria-valuemin` / `aria-valuemax`, so a screen
+ * reader announces it the same way whichever bar it encounters.
+ */
+function CompletionBar({ pct, label }: { pct: number; label: string }) {
+  const clamped = Math.min(100, Math.max(0, pct));
+  return (
+    <div
+      role="progressbar"
+      aria-valuenow={Math.round(clamped)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label}
+      className="relative h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden"
+    >
+      <div
+        className="absolute inset-y-0 left-0 bg-black dark:bg-white rounded-full"
+        style={{ width: `${clamped.toFixed(2)}%` }}
+      />
+    </div>
+  );
+}
+
 interface RowDef {
   label:  string;
   render: (info: StreamInfo, m: CompareMetrics, ctx: { publicKey: string; symbol: string }) => React.ReactNode;
@@ -92,6 +123,21 @@ const ROWS: RowDef[] = [
       ),
   },
   {
+    label:  'Completion',
+    render: (_info, m) =>
+      m.progressPct === null ? (
+        <span className="text-gray-400">Open-ended</span>
+      ) : (
+        <div className="space-y-1 min-w-[100px]">
+          <CompletionBar
+            pct={m.progressPct}
+            label={`Completion ${Math.round(m.progressPct)}%`}
+          />
+          <span className="font-mono text-xs">{Math.round(m.progressPct)}%</span>
+        </div>
+      ),
+  },
+  {
     label:  'Time remaining',
     render: (_info, m) =>
       m.remainingSec === null ? (
@@ -104,7 +150,7 @@ const ROWS: RowDef[] = [
       ),
   },
   {
-    label:  'Left to stream',
+    label:  'Remaining balance',
     render: (_info, m, { symbol }) =>
       m.remainingAmount === null ? (
         <span className="text-gray-400">—</span>
@@ -116,6 +162,20 @@ const ROWS: RowDef[] = [
     label:  'Ends',
     render: (info) =>
       info.endTime === 0 ? <span className="text-gray-400">—</span> : <span>{formatTimestamp(info.endTime)}</span>,
+  },
+  {
+    label:  'Projected completion',
+    render: (_info, m) =>
+      m.projectedEnd === null ? (
+        <span className="text-gray-400">—</span>
+      ) : (
+        <span>
+          {formatTimestamp(m.projectedEnd)}
+          {m.status === 'paused' && (
+            <span className="text-gray-400 font-sans"> (if resumed now)</span>
+          )}
+        </span>
+      ),
   },
 ];
 

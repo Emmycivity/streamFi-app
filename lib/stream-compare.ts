@@ -16,6 +16,11 @@ export interface CompareMetrics {
   ratePerDay:      bigint;
   /** Tokens still to be streamed (rate × remaining), or null if open-ended */
   remainingAmount: bigint | null;
+  /** Unix timestamp (seconds) at which the stream is projected to have fully
+   *  streamed, if it carries on at the current rate from now. Null when there
+   *  is nothing left to project — an ended or cancelled stream has no
+   *  projection, and an open-ended stream has no end to project onto. */
+  projectedEnd:    number | null;
 }
 
 export function deriveStatus(info: StreamInfo, now: number): StreamStatus {
@@ -33,7 +38,7 @@ export function compareMetrics(info: StreamInfo, now: number): CompareMetrics {
   const total      = info.endTime - info.startTime;
 
   if (info.endTime === 0 || total <= 0) {
-    return { status, progressPct: null, remainingSec: null, ratePerDay, remainingAmount: null };
+    return { status, progressPct: null, remainingSec: null, ratePerDay, remainingAmount: null, projectedEnd: null };
   }
 
   const reference = status === 'paused' && info.pausedAt ? info.pausedAt : now;
@@ -48,6 +53,11 @@ export function compareMetrics(info: StreamInfo, now: number): CompareMetrics {
     remainingSec,
     ratePerDay,
     remainingAmount: info.ratePerSecond * BigInt(remainingSec),
+    // A stream that is still live is projected to finish once its remaining
+    // time has elapsed. For a paused stream that projection assumes it is
+    // resumed now, which is why it lands later than the scheduled end.
+    projectedEnd:
+      status === 'active' || status === 'paused' ? now + remainingSec : null,
   };
 }
 

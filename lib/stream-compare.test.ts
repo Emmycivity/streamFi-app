@@ -59,6 +59,34 @@ describe('compareMetrics', () => {
     expect(m.progressPct).toBeNull();
     expect(m.remainingSec).toBeNull();
     expect(m.remainingAmount).toBeNull();
+    expect(m.projectedEnd).toBeNull();
+  });
+});
+
+describe('compareMetrics projectedEnd', () => {
+  it('projects an active stream to finish once its remaining time elapses', () => {
+    const m = compareMetrics(info(), NOW);
+    expect(m.projectedEnd).toBe(NOW + 300);
+  });
+
+  it('projects a paused stream past its scheduled end, assuming it resumes now', () => {
+    const m = compareMetrics(info({ paused: true, pausedAt: NOW - 50 }), NOW);
+    // 350 seconds of streaming remain, so resuming now finishes 350 seconds
+    // from now — later than the scheduled end of NOW + 300.
+    expect(m.projectedEnd).toBe(NOW + 350);
+    expect(m.projectedEnd!).toBeGreaterThan(info().endTime);
+  });
+
+  it('has no projection for an ended stream', () => {
+    expect(compareMetrics(info({ endTime: NOW - 1 }), NOW).projectedEnd).toBeNull();
+  });
+
+  it('has no projection for a cancelled stream', () => {
+    expect(compareMetrics(info({ cancelled: true }), NOW).projectedEnd).toBeNull();
+  });
+
+  it('has no projection for an open-ended stream', () => {
+    expect(compareMetrics(info({ endTime: 0 }), NOW).projectedEnd).toBeNull();
   });
 });
 
