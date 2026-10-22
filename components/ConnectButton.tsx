@@ -5,6 +5,7 @@ import { useWallet }         from '@/contexts/WalletContext';
 import { CopyAddress }       from '@/components/ui/CopyAddress';
 import { LogOut }            from 'lucide-react';
 import { MultiWalletModal }  from '@/components/MultiWalletModal';
+import { LEDGER_WALLET_ID }  from '@/lib/ledger-wallet';
 
 const CONNECT_UI_TIMEOUT_MS = 20_000;
 
@@ -45,14 +46,19 @@ export function ConnectButton() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const connectStartRef = useRef<number>(0);
+  const connectingProviderRef = useRef<string | null>(null);
 
   // Auto-reconnect on mount if a cached wallet exists (#736).
   useEffect(() => {
     if (connected) return;
     const cached = getCachedWalletProvider();
     if (!cached) return;
-    // Attempt silent reconnection
-    connect().catch(() => {
+    // WebHID's device picker needs a user gesture, so a Ledger can't be
+    // re-prompted on load. WalletProvider already restores the session, and
+    // the previously granted device is re-opened on the first signature.
+    if (cached === LEDGER_WALLET_ID) return;
+    // Attempt silent reconnection with the same provider
+    connect(cached).catch(() => {
       // Silent reconnect failed — user needs to connect manually
       clearCachedWalletProvider();
     });
@@ -62,6 +68,9 @@ export function ConnectButton() {
   // force-clear the UI state so the user isn't stuck with a spinner.
   useEffect(() => {
     if (!connecting) return;
+    // The Ledger flow waits on the browser's device picker and the user
+    // unlocking the device — no fixed deadline is meaningful there.
+    if (connectingProviderRef.current === LEDGER_WALLET_ID) return;
     const elapsed = Date.now() - connectStartRef.current;
     const remaining = CONNECT_UI_TIMEOUT_MS - elapsed;
     if (remaining <= 0) {
@@ -77,6 +86,7 @@ export function ConnectButton() {
   const handleConnect = async () => {
     setError(null);
     connectStartRef.current = Date.now();
+    connectingProviderRef.current = null;
     try {
       await connect();
       cacheWalletProvider(walletName || 'freighter');
@@ -89,8 +99,9 @@ export function ConnectButton() {
     setShowModal(false);
     setError(null);
     connectStartRef.current = Date.now();
+    connectingProviderRef.current = providerId;
     try {
-      await connect();
+      await connect(providerId);
       cacheWalletProvider(providerId);
     } catch (e) {
       setError(e instanceof Error ? e.message : `Failed to connect ${providerId}.`);

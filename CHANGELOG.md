@@ -5,6 +5,10 @@ All notable changes are documented here. Format based on [Keep a Changelog](http
 ## [Unreleased]
 
 ### Added
+- Connect modal — **Ledger** hardware wallet option over WebHID (`lib/ledger-wallet.ts`,
+  `@ledgerhq/hw-transport-webhid` + `@ledgerhq/hw-app-str`, lazy-loaded on first use). Disabled
+  with an explanation in browsers without WebHID; clear errors for a cancelled device picker, a
+  locked device, the Stellar app not being open, and unplugging the device (#792)
 - `lib/i18n/` — i18next/react-i18next bootstrap and a `dashboard` message namespace;
   `/dashboard` is fully externalized as the proof-of-concept page for the string-externalization
   migration (#558)
