@@ -12,6 +12,8 @@ export interface TokenMeta {
   /** Stellar asset contract address — undefined for native XLM */
   address?: string;
   logoUrl?: string;
+  /** 24h price change percentage (e.g., 2.5 for +2.5%) */
+  priceChange24h?: number;
 }
 
 export interface StellarExpertVerification { verified: boolean; token?: TokenMeta; error?: string; }
