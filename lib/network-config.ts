@@ -52,3 +52,24 @@ export function isValidNetworkName(value: string): value is NetworkName {
 export function getDefaultNetwork(): NetworkConfig {
   return NETWORKS[DEFAULT_NETWORK];
 }
+
+/** Return the config for a given network name. */
+export function getNetworkConfig(network: NetworkName): NetworkConfig {
+  return NETWORKS[network];
+}
+
+/** Return the network config matching a passphrase, if any. */
+export function getNetworkByPassphrase(passphrase: string): NetworkConfig | undefined {
+  return Object.values(NETWORKS).find((network) => network.passphrase === passphrase);
+}
+
+/** Check whether a wallet passphrase matches the expected app network. */
+export function isNetworkMismatch(
+  expectedNetwork: NetworkName,
+  walletPassphrase: string | null | undefined,
+): boolean {
+  if (!walletPassphrase) {
+    return false;
+  }
+  return NETWORKS[expectedNetwork].passphrase !== walletPassphrase;
+}

@@ -35,9 +35,9 @@ import {
 import { getNetworkPassphrase } from '@/lib/env';
 import { withTimeout } from '@/lib/with-timeout';
 import { queryClient } from '@/lib/queryClient';
+import { getNetworkConfig } from '@/lib/network-config';
 import { resetTokenAllowanceGateway } from '@/lib/token-allowance-gateway';
 import { useTransactionStore } from '@/lib/store';
-import { truncateAddress } from '@/lib/format';
 import { useRouter } from 'next/navigation';
 import {
   clearWalletSession,
@@ -46,7 +46,6 @@ import {
   touchWalletSession,
 } from '@/lib/wallet-storage';
 import { resetServer, resetCircuitBreaker } from '@/lib/soroban';
-import { clearIdempotencyKeys } from '@/lib/safe-operations';
 import toast from 'react-hot-toast';
 
 // ── Concurrency Primitives ───────────────────────────────────────────────────
@@ -282,6 +281,10 @@ export interface WalletState {
   connecting:  boolean;
   /** True if the wallet is connected */
   connected:   boolean;
+  /** True when the wallet's network passphrase differs from the app's configured network */
+  networkMismatch: boolean;
+  /** The wallet's current network passphrase, or null if unknown */
+  walletNetworkPassphrase: string | null;
   /** Number of operations currently in-flight (queued + active) */
   pendingOperationCount: number;
   /** Maximum concurrent signing operations allowed */
@@ -320,13 +323,14 @@ export function WalletProvider({
   const [publicKey,  setPublicKey]  = useState<string | null>(null);
   const [walletName, setWalletName] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [networkMismatch, setNetworkMismatch] = useState(false);
+  const [walletNetworkPassphrase, setWalletNetworkPassphrase] = useState<string | null>(null);
   const [pendingOperationCount, setPendingOperationCount] = useState(0);
   const isMountedRef = useRef(true);
   const pendingRequestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const semaphoreRef = useRef<Semaphore>(new Semaphore(maxConcurrentOperations));
   const connectMutexRef = useRef<Mutex>(new Mutex());
-  const pendingConnectAbortRef = useRef<AbortController | null>(null);
   const router = useRouter();
 
   // Mirrors `publicKey` for use inside the WatchWalletChanges callback below,
@@ -426,24 +430,15 @@ export function WalletProvider({
   const connect = useCallback(async () => {
     const requestId = ++pendingRequestIdRef.current;
 
-    // A newer connect() call supersedes whatever's still waiting in the
-    // mutex queue — cancel it now rather than let it run its turn.
-    pendingConnectAbortRef.current?.abort();
-    const myAbort = new AbortController();
-    pendingConnectAbortRef.current = myAbort;
-
     const clearConnectingState = () => {
       if (requestId === pendingRequestIdRef.current && isMountedRef.current) {
         setConnecting(false);
-      }
-      if (pendingConnectAbortRef.current === myAbort) {
-        pendingConnectAbortRef.current = null;
       }
     };
 
     let release: () => void;
     try {
-      release = await connectMutexRef.current.acquire(myAbort.signal);
+      release = await connectMutexRef.current.acquire();
     } catch {
       // Aborted while queued — the call that superseded us owns cleanup.
       clearConnectingState();
@@ -502,6 +497,8 @@ export function WalletProvider({
 
       setPublicKey(address);
       setWalletName('Freighter');
+      setNetworkMismatch(false);
+      setWalletNetworkPassphrase(walletPassphrase ?? null);
       saveWalletSession({ key: address, name: 'Freighter' });
     } catch (error) {
       clearConnectingState();
@@ -516,10 +513,11 @@ export function WalletProvider({
 
   const disconnect = useCallback(() => {
     pendingRequestIdRef.current += 1;
-    pendingConnectAbortRef.current?.abort();
     setConnecting(false);
     setPublicKey(null);
     setWalletName(null);
+    setNetworkMismatch(false);
+    setWalletNetworkPassphrase(null);
 
     // Purge the wallet session only — a blanket clear() previously wiped
     // unrelated storage (e.g. the theme preference) on every disconnect (#237).
@@ -537,7 +535,6 @@ export function WalletProvider({
     resetServer();
     resetCircuitBreaker();
     resetTokenAllowanceGateway();
-    clearIdempotencyKeys();
     router.push('/');
   }, [clearTransactions, router]);
 
@@ -577,17 +574,22 @@ export function WalletProvider({
       // that leave React Query caches pointing at the wrong network (#418).
       const configuredPassphrase = getNetworkPassphrase();
       if (networkPassphrase && networkPassphrase !== configuredPassphrase) {
+        setNetworkMismatch(true);
+        setWalletNetworkPassphrase(networkPassphrase);
         queryClient.clear();
         resetTokenAllowanceGateway();
         clearTransactions();
         resetServer();
         resetCircuitBreaker();
-        clearIdempotencyKeys();
         toast.error(
           `Network mismatch: wallet is on a different network (${networkPassphrase}) than the app (${configuredPassphrase}). Please switch your wallet to the correct network.`,
         );
         return;
       }
+
+      // Wallet is back on the app's configured network — clear any warning.
+      setNetworkMismatch(false);
+      setWalletNetworkPassphrase(networkPassphrase ?? null);
 
       if (address === publicKeyRef.current) return; // nothing actually changed
 
@@ -599,7 +601,6 @@ export function WalletProvider({
       resetServer();
       resetCircuitBreaker();
       resetTokenAllowanceGateway();
-      clearIdempotencyKeys();
       toast(`Switched to ${truncateAddress(address)}`, { icon: '🔄' });
     });
 
@@ -680,6 +681,8 @@ export function WalletProvider({
     walletName,
     connecting,
     connected: publicKey !== null,
+    networkMismatch,
+    walletNetworkPassphrase,
     pendingOperationCount,
     maxConcurrentOperations,
     connect,
@@ -689,6 +692,8 @@ export function WalletProvider({
     publicKey,
     walletName,
     connecting,
+    networkMismatch,
+    walletNetworkPassphrase,
     pendingOperationCount,
     maxConcurrentOperations,
     connect,
