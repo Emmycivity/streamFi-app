@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import {
+  OFFLINE_QUEUE_STORAGE_KEY,
   flushQueuedTransactions,
   queuedTransactions,
   startOnlineSync,
@@ -11,6 +12,7 @@ import {
 
 /**
  * #739, #809 — Queue failed transactions, retry on reconnect, and notify user.
+ * #795 — Show how many drafts are queued offline, kept in sync across tabs.
  */
 export function OfflineTransactionSync() {
   const { publicKey, signTx } = useWallet();
@@ -39,14 +41,23 @@ export function OfflineTransactionSync() {
       setTimeout(() => setShowRetryPrompt(false), 3000);
     };
 
+    // Another tab queuing or flushing a draft only reaches this tab as a
+    // `storage` event on the queue key (#795); a null key means storage was
+    // cleared.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === OFFLINE_QUEUE_STORAGE_KEY) updateCount();
+    };
+
     window.addEventListener('online', flush);
     window.addEventListener('offline-transactions-changed', updateCount);
+    window.addEventListener('storage', onStorage);
     updateCount();
 
     return () => {
       stopOnlineSync();
       window.removeEventListener('online', flush);
       window.removeEventListener('offline-transactions-changed', updateCount);
+      window.removeEventListener('storage', onStorage);
     };
   }, [publicKey, signTx]);
 

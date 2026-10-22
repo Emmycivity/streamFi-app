@@ -13,6 +13,22 @@ type NewOfflineTransaction =
 
 const KEY = 'conduit-offline-transactions';
 const DEAD_LETTER_KEY = `${KEY}:dead-letter`;
+
+/**
+ * localStorage key the offline queue lives under. Other tabs that queue or
+ * flush transactions announce it through `storage` events on this key, so
+ * the queue badge can stay in sync across tabs (#795).
+ */
+export const OFFLINE_QUEUE_STORAGE_KEY = KEY;
+
+/**
+ * Text for the offline queue badge (#795): "1 draft queued offline",
+ * "3 drafts queued offline". Negative or non-finite counts read as zero.
+ */
+export function queuedDraftsLabel(count: number): string {
+  const n = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  return `${n} draft${n === 1 ? '' : 's'} queued offline`;
+}
 export const MAX_SYNC_ATTEMPTS = 3;
 
 function read(): OfflineTransaction[] {
