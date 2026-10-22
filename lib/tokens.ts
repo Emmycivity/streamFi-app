@@ -12,6 +12,11 @@ export interface TokenMeta {
   /** Stellar asset contract address — undefined for native XLM */
   address?: string;
   logoUrl?: string;
+  /**
+   * `false` for user-imported tokens that are not in the curated list (#789).
+   * Curated entries leave this unset.
+   */
+  verified?: boolean;
 }
 
 export interface StellarExpertVerification { verified: boolean; token?: TokenMeta; error?: string; }
@@ -168,6 +173,89 @@ import {
   getTokenAllowanceGateway,
   DEFAULT_EXPIRATION_LEDGER,
 } from './token-allowance-gateway';
+import { simulateReadOnly } from './soroban';
+import { isValidStellarContract, isValidStellarPublicKey } from './stellar-address';
+import { scValToNative, type xdr } from '@stellar/stellar-sdk';
+
+// ── Custom token import (SEP-41 metadata, #789) ───────────────────────────────
+
+/** SEP-41 tokens store at most i128 amounts, so decimals above 38 are bogus. */
+const MAX_TOKEN_DECIMALS = 38;
+const MAX_METADATA_LENGTH = 64;
+const METADATA_TIMEOUT_MS = 15_000;
+
+function decodeMetadataString(val: xdr.ScVal, field: 'name' | 'symbol'): string {
+  const native: unknown = scValToNative(val);
+  const str = typeof native === 'string'
+    ? native
+    : native instanceof Uint8Array
+      ? new TextDecoder().decode(native)
+      : null;
+  const trimmed = str?.trim();
+  if (!trimmed || trimmed.length > MAX_METADATA_LENGTH) {
+    throw new Error(`Contract returned an invalid token ${field}.`);
+  }
+  return trimmed;
+}
+
+function decodeMetadataDecimals(val: xdr.ScVal): number {
+  const native: unknown = scValToNative(val);
+  const n = typeof native === 'bigint' ? Number(native) : native;
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < 0 || n > MAX_TOKEN_DECIMALS) {
+    throw new Error('Contract returned invalid token decimals.');
+  }
+  return n;
+}
+
+/**
+ * Read a token's SEP-41 metadata (`name`, `symbol`, `decimals`) via read-only
+ * simulation. Used by the TokenSelector "Import token" flow for contracts
+ * that are not in the curated list. The returned token is always marked
+ * `verified: false`.
+ *
+ * @param contractId  Token contract address (C...)
+ * @param source      Any funded account (simulation source), e.g. the wallet
+ * @throws            When the address is invalid, the contract does not
+ *                    implement the SEP-41 metadata interface, or RPC fails.
+ */
+export async function fetchSep41Metadata(
+  contractId: string,
+  source: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<TokenMeta> {
+  if (!isValidStellarContract(contractId)) {
+    throw new Error('Enter a valid Soroban contract address (C…).');
+  }
+  if (!source || !isValidStellarPublicKey(source)) {
+    throw new Error('Connect a wallet to look up token metadata.');
+  }
+
+  const callOptions = { signal: options.signal, timeoutMs: options.timeoutMs ?? METADATA_TIMEOUT_MS };
+
+  let results: [xdr.ScVal, xdr.ScVal, xdr.ScVal];
+  try {
+    results = await Promise.all([
+      simulateReadOnly(source, contractId, 'name', [], callOptions),
+      simulateReadOnly(source, contractId, 'symbol', [], callOptions),
+      simulateReadOnly(source, contractId, 'decimals', [], callOptions),
+    ]);
+  } catch (err: unknown) {
+    if (options.signal?.aborted) throw err;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Could not read token metadata. The contract may not be a SEP-41 token (${detail}).`,
+    );
+  }
+
+  const [nameVal, symbolVal, decimalsVal] = results;
+  return {
+    name:     decodeMetadataString(nameVal, 'name'),
+    symbol:   decodeMetadataString(symbolVal, 'symbol'),
+    decimals: decodeMetadataDecimals(decimalsVal),
+    address:  contractId,
+    verified: false,
+  };
+}
 
 export interface AllowanceResult {
   /**

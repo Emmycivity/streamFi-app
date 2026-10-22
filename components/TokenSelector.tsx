@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { tokenByAddress, getTokens, networksForAddress, type TokenMeta } from '@/lib/tokens';
+import {
+  tokenByAddress,
+  getTokens,
+  networksForAddress,
+  fetchSep41Metadata,
+  type TokenMeta,
+} from '@/lib/tokens';
+import { loadImportedTokens, saveImportedToken } from '@/lib/imported-tokens-storage';
+import { isValidStellarContract } from '@/lib/stellar-address';
+import { Modal } from '@/components/ui/Modal';
 
 /**
  * Stellar Soroban contract addresses are base32-encoded with the RFC 4648
@@ -27,9 +36,16 @@ export interface TokenSelectorProps {
   disabled?: boolean;
   /** Additional className forwarded to the outer wrapper. */
   className?: string;
+  /**
+   * Funded account used as the simulation source when reading SEP-41
+   * metadata for a custom token import (#789) — typically the connected
+   * wallet's public key. Importing is unavailable until this is set.
+   */
+  sourceAddress?: string | null;
 }
 
 type ResolveStatus = 'idle' | 'loading' | 'resolved' | 'unknown' | 'error';
+type ImportStatus  = 'idle' | 'loading' | 'error';
 
 /**
  * TokenSelector — controlled input for a Soroban token contract address.
@@ -43,6 +59,10 @@ type ResolveStatus = 'idle' | 'loading' | 'resolved' | 'unknown' | 'error';
  * - Aborts any in-flight lookup when the address changes (rapid re-selection
  *   guard) so stale results can never overwrite a newer address.
  * - Surfaces distinct loading, resolved, unknown-token, and error states.
+ * - Lets users paste an arbitrary Soroban contract address into search and
+ *   import it (#789): SEP-41 metadata is read on-chain, an "Unverified Asset"
+ *   disclaimer must be explicitly acknowledged, and the token is persisted
+ *   locally and flagged as unverified in the list.
  */
 export function TokenSelector({
   value,
@@ -51,6 +71,7 @@ export function TokenSelector({
   network = 'testnet',
   disabled = false,
   className = '',
+  sourceAddress = null,
 }: TokenSelectorProps) {
   const [status, setStatus]   = useState<ResolveStatus>('idle');
   const [token, setToken]     = useState<TokenMeta | null>(null);
@@ -70,18 +91,97 @@ export function TokenSelector({
     return () => clearTimeout(t);
   }, [search]);
 
+  // ── Imported (unverified) tokens (#789) ──────────────────────────────────
+  // Loaded after mount so server and first client render match. The ref
+  // mirrors state so resolveToken can see a token imported in the same tick.
+  const [importedTokens, setImportedTokens] = useState<TokenMeta[]>([]);
+  const importedRef = useRef<TokenMeta[]>([]);
+
+  useEffect(() => {
+    const list = loadImportedTokens(network);
+    importedRef.current = list;
+    setImportedTokens(list);
+  }, [network]);
+
+  const allTokens = useMemo<TokenMeta[]>(
+    () => [...getTokens(network), ...importedTokens],
+    [network, importedTokens],
+  );
+
   const filteredTokens = useMemo<TokenMeta[]>(() => {
     const q = debouncedSearch.trim().toLowerCase();
     if (!q) return [];
-    return getTokens(network).filter(t => {
+    return allTokens.filter(t => {
       if (t.symbol.toLowerCase().includes(q)) return true;
       if (t.name.toLowerCase().includes(q)) return true;
       if (t.address?.toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [debouncedSearch, network]);
+  }, [debouncedSearch, allTokens]);
 
   const showSearchResults = debouncedSearch.trim().length > 0;
+
+  // A pasted contract address that is in neither list can be imported.
+  const importCandidate = useMemo<string | null>(() => {
+    const q = debouncedSearch.trim().toUpperCase();
+    if (!isValidStellarContract(q)) return null;
+    return allTokens.some(t => t.address === q) ? null : q;
+  }, [debouncedSearch, allTokens]);
+
+  const [importStatus, setImportStatus]   = useState<ImportStatus>('idle');
+  const [importError, setImportError]     = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<TokenMeta | null>(null);
+  const [acknowledged, setAcknowledged]   = useState(false);
+  const importAbortRef = useRef<AbortController | null>(null);
+
+  // Any change to the import candidate cancels an in-flight metadata read.
+  useEffect(() => {
+    importAbortRef.current?.abort();
+    setImportStatus('idle');
+    setImportError(null);
+  }, [importCandidate]);
+
+  useEffect(() => () => importAbortRef.current?.abort(), []);
+
+  const startImport = useCallback(async (address: string) => {
+    importAbortRef.current?.abort();
+    const controller = new AbortController();
+    importAbortRef.current = controller;
+
+    setImportStatus('loading');
+    setImportError(null);
+
+    try {
+      const meta = await fetchSep41Metadata(address, sourceAddress ?? '', {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      setAcknowledged(false);
+      setPendingImport(meta);
+      setImportStatus('idle');
+    } catch (err: unknown) {
+      if (controller.signal.aborted) return;
+      setImportError(err instanceof Error ? err.message : 'Could not read token metadata.');
+      setImportStatus('error');
+    }
+  }, [sourceAddress]);
+
+  const cancelImport = useCallback(() => {
+    setPendingImport(null);
+    setAcknowledged(false);
+  }, []);
+
+  const confirmImport = useCallback(() => {
+    if (!pendingImport?.address || !acknowledged) return;
+    const list = saveImportedToken(network, pendingImport);
+    importedRef.current = list;
+    setImportedTokens(list);
+    setPendingImport(null);
+    setAcknowledged(false);
+    setSearch('');
+    setDebouncedSearch('');
+    onChange(pendingImport.address);
+  }, [pendingImport, acknowledged, network, onChange]);
 
   // Ref to the AbortController for the current in-flight metadata lookup.
   // Replaced on every new lookup so the previous one can be cancelled.
@@ -107,7 +207,10 @@ export function TokenSelector({
         // Bail out if the address changed while we were "awaiting".
         if (controller.signal.aborted) return;
 
-        const found = tokenByAddress(address, network) ?? null;
+        const found =
+          tokenByAddress(address, network) ??
+          importedRef.current.find(t => t.address === address) ??
+          null;
         if (controller.signal.aborted) return;
 
         setToken(found);
@@ -204,8 +307,18 @@ export function TokenSelector({
 
       {!showValidationError && status === 'resolved' && token && (
         <p className="text-xs text-gray-500 mt-1" role="status" aria-live="polite">
-          <span aria-hidden="true">✓ </span>
-          {token.symbol} — {token.name}
+          {token.verified === false ? (
+            <>
+              <span aria-hidden="true">⚠ </span>
+              {token.symbol} — {token.name}
+              <span className="text-amber-600 dark:text-amber-400"> (unverified, imported by you)</span>
+            </>
+          ) : (
+            <>
+              <span aria-hidden="true">✓ </span>
+              {token.symbol} — {token.name}
+            </>
+          )}
         </p>
       )}
 
@@ -256,7 +369,47 @@ export function TokenSelector({
             aria-label="Matching tokens"
             className="mt-1 max-h-48 overflow-y-auto rounded border border-gray-200 dark:border-gray-700"
           >
-            {filteredTokens.length === 0 ? (
+            {filteredTokens.length === 0 && importCandidate ? (
+              <div className="px-3 py-2 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  This contract is not in the verified token list.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => startImport(importCandidate)}
+                  disabled={disabled || importStatus === 'loading' || !sourceAddress}
+                  aria-describedby={
+                    !sourceAddress
+                      ? 'token-selector-import-hint'
+                      : importStatus === 'error'
+                        ? 'token-selector-import-error'
+                        : undefined
+                  }
+                  className="btn-secondary text-xs"
+                >
+                  {importStatus === 'loading' ? 'Reading token metadata…' : 'Import token'}
+                </button>
+                {!sourceAddress && (
+                  <p id="token-selector-import-hint" className="text-xs text-gray-400">
+                    Connect a wallet to look up token metadata.
+                  </p>
+                )}
+                {importStatus === 'loading' && (
+                  <p className="sr-only" role="status" aria-live="polite">
+                    Reading token metadata…
+                  </p>
+                )}
+                {importStatus === 'error' && (
+                  <p
+                    id="token-selector-import-error"
+                    role="alert"
+                    className="text-xs text-red-600"
+                  >
+                    {importError ?? 'Could not read token metadata.'} You can try again.
+                  </p>
+                )}
+              </div>
+            ) : filteredTokens.length === 0 ? (
               <p className="px-3 py-2 text-xs text-gray-400" role="status">
                 No tokens match “{debouncedSearch.trim()}”.
               </p>
@@ -285,6 +438,11 @@ export function TokenSelector({
                         ✓
                       </span>
                     )}
+                    {t.verified === false && (
+                      <span className="ml-1 rounded border border-amber-300 px-1 text-[10px] font-semibold uppercase text-amber-700 dark:border-amber-700 dark:text-amber-400">
+                        Unverified
+                      </span>
+                    )}
                     <span className="text-gray-500 dark:text-gray-400"> — {t.name}</span>
                     {t.address && (
                       <span className="block font-mono text-[10px] text-gray-400 truncate">
@@ -298,6 +456,64 @@ export function TokenSelector({
           </div>
         )}
       </div>
+
+      {/* Unverified asset disclaimer (#789). Modal provides the focus trap,
+          Escape-to-close, and focus restoration. */}
+      {pendingImport && (
+        <Modal title="Unverified Asset" onClose={cancelImport}>
+          <div className="space-y-4">
+            <p id="token-import-warning" className="text-sm text-gray-600 dark:text-gray-400">
+              This token is not on the verified list. Anyone can deploy a contract with any
+              name or symbol, including copies of well-known assets. Make sure you trust this
+              contract before streaming funds with it.
+            </p>
+            <div className="rounded border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+              <div className="flex justify-between gap-4 px-3 py-2">
+                <span className="text-gray-500">Name</span>
+                <span>{pendingImport.name}</span>
+              </div>
+              <div className="flex justify-between gap-4 px-3 py-2">
+                <span className="text-gray-500">Symbol</span>
+                <span className="font-semibold">{pendingImport.symbol}</span>
+              </div>
+              <div className="flex justify-between gap-4 px-3 py-2">
+                <span className="text-gray-500">Decimals</span>
+                <span className="font-mono">{pendingImport.decimals}</span>
+              </div>
+              <div className="px-3 py-2">
+                <span className="block text-gray-500">Contract</span>
+                <span className="block font-mono text-xs break-all">{pendingImport.address}</span>
+              </div>
+            </div>
+            <label htmlFor="token-import-acknowledge" className="flex items-start gap-2 cursor-pointer">
+              <input
+                id="token-import-acknowledge"
+                type="checkbox"
+                checked={acknowledged}
+                onChange={e => setAcknowledged(e.target.checked)}
+                aria-describedby="token-import-warning"
+                className="mt-0.5 rounded border-gray-300"
+              />
+              <span className="text-xs text-gray-700 dark:text-gray-300">
+                I understand this token is unverified and I accept the risk of importing it.
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-primary flex-1"
+                onClick={confirmImport}
+                disabled={!acknowledged}
+              >
+                Import token
+              </button>
+              <button type="button" className="btn-secondary" onClick={cancelImport}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
