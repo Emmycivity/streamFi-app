@@ -12,6 +12,7 @@ import { NotificationBell } from '@/components/NotificationBell';
 import { NetworkLatencyIndicator } from '@/components/NetworkLatencyIndicator';
 import { useSelectedNetwork } from '@/hooks/useSelectedNetwork';
 import { useSettings } from '@/hooks/useSettings';
+import { useTransactionStore } from '@/lib/store';
 
 const BASE_NAV = [
   { href: '/streams',      label: 'Streams'    },
@@ -28,6 +29,9 @@ export function Navbar() {
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const network = useSelectedNetwork();
   const { advancedMode } = useSettings();
+  // Submitted-but-unconfirmed transactions, so a pending ledger submit stays
+  // visible after the user navigates away from the page that sent it (#791).
+  const pendingCount = useTransactionStore((s) => s.pendingSubmissions);
 
   // The side-by-side compare view is an advanced/power-user tool, so it is
   // only linked in the nav when advanced mode is enabled (#586). The route
@@ -131,7 +135,14 @@ export function Navbar() {
           >
             <NotificationBell />
             <ThemeToggle />
-            <ConnectButton />
+            <div className="relative">
+              <ConnectButton />
+              {pendingCount > 0 && (
+                <span data-testid="pending-tx-badge" className="absolute -top-2 -right-2">
+                  {pendingCount > 9 ? '9+' : pendingCount}
+                </span>
+              )}
+            </div>
           </ErrorBoundary>
 
           {/* Mobile hamburger */}
