@@ -9,6 +9,8 @@ import {
   loadOnboardingState,
   saveOnboardingState,
   clearOnboardingState,
+  hasCompletedOnboarding,
+  markOnboardingCompleted,
 } from './onboarding-storage.js';
 
 // ── Minimal localStorage stub ────────────────────────────────────────────────
@@ -31,6 +33,7 @@ Object.defineProperty(globalThis, 'localStorage', {
 });
 
 const STORAGE_KEY = 'conduit:onboarding';
+const COMPLETED_KEY = 'has_completed_onboarding_v1';
 
 beforeEach(() => {
   store.clear();
@@ -135,5 +138,58 @@ describe('clearOnboardingState', () => {
     saveOnboardingState({ completed: true });
     clearOnboardingState();
     expect(loadOnboardingState()).toBeNull();
+  });
+
+  it('also removes the completed-tour flag (#798)', () => {
+    markOnboardingCompleted();
+    expect(store.has(COMPLETED_KEY)).toBe(true);
+    clearOnboardingState();
+    expect(store.has(COMPLETED_KEY)).toBe(false);
+  });
+});
+
+// ── hasCompletedOnboarding / markOnboardingCompleted (#798) ─────────────
+
+describe('hasCompletedOnboarding', () => {
+  it('returns false when the flag is absent', () => {
+    expect(hasCompletedOnboarding()).toBe(false);
+  });
+
+  it('returns false when the flag holds a non-true value', () => {
+    store.set(COMPLETED_KEY, 'false');
+    expect(hasCompletedOnboarding()).toBe(false);
+  });
+
+  it('returns true once the tour has been marked completed', () => {
+    markOnboardingCompleted();
+    expect(hasCompletedOnboarding()).toBe(true);
+  });
+
+  it('does not read the step-progress state', () => {
+    saveOnboardingState({ completed: true, dismissedAt: 1 });
+    expect(hasCompletedOnboarding()).toBe(false);
+  });
+});
+
+describe('markOnboardingCompleted', () => {
+  it('persists "true" under has_completed_onboarding_v1', () => {
+    markOnboardingCompleted();
+    expect(store.get(COMPLETED_KEY)).toBe('true');
+  });
+
+  it('does not disturb unrelated storage keys', () => {
+    store.set('theme', 'dark');
+    markOnboardingCompleted();
+    expect(store.get('theme')).toBe('dark');
+    expect(store.get(STORAGE_KEY)).toBeUndefined();
+  });
+
+  it('falls back to memory store when localStorage.setItem throws', () => {
+    const original = localStorageMock.setItem;
+    localStorageMock.setItem = () => { throw new Error('storage unavailable'); };
+    markOnboardingCompleted();
+    localStorageMock.setItem = original;
+    // Still readable via the in-memory fallback for this session
+    expect(hasCompletedOnboarding()).toBe(true);
   });
 });

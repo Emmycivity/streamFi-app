@@ -10,8 +10,10 @@
  *   6. Hides the "Back" button on the first step, shows it otherwise.
  *   7. Shows "Next" as the primary action label on non-final steps, "Finish"
  *      on the final step.
- *   8. Clicking Skip / Back / Next call the corresponding hook actions.
- *   9. Closing the Modal (onClose) calls skip.
+ *   8. Clicking Skip / Back / Next call the corresponding hook actions. *  9. Closing the Modal (onClose) calls skip.
+ * 10. Renders nothing when the has_completed_onboarding_v1 flag is set (#798).
+ * 11. Persists has_completed_onboarding_v1 when the tour is finished or
+ *     skipped, but not on intermediate Next clicks (#798).
  */
 
 import React, { act } from 'react';
@@ -68,6 +70,7 @@ beforeEach(() => {
   nextStep.mockClear();
   prevStep.mockClear();
   skip.mockClear();
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -169,6 +172,64 @@ describe('OnboardingTour — navigation buttons', () => {
     mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
     const { container, cleanup } = render(<OnboardingTour />);
     act(() => { textOfButton(container, 'Next')!.click(); });
+    expect(nextStep).toHaveBeenCalledOnce();
+    cleanup();
+  });
+});
+
+describe('OnboardingTour — completed-tour flag (#798)', () => {
+  const FLAG_KEY = 'has_completed_onboarding_v1';
+
+  it('renders nothing when has_completed_onboarding_v1 is set', () => {
+    localStorage.setItem(FLAG_KEY, 'true');
+    mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
+    const { container, cleanup } = render(<OnboardingTour />);
+    expect(container.textContent).toBe('');
+    cleanup();
+  });
+
+  it('renders when has_completed_onboarding_v1 is not set', () => {
+    mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
+    const { container, cleanup } = render(<OnboardingTour />);
+    expect(container.textContent).toContain(ONBOARDING_STEPS[0].title);
+    cleanup();
+  });
+
+  it('persists the flag when Finish is clicked on the final step', () => {
+    const lastIndex = ONBOARDING_STEPS.length - 1;
+    mockOnboarding({ isActive: true, currentStepIndex: lastIndex, currentStep: ONBOARDING_STEPS[lastIndex] });
+    const { container, cleanup } = render(<OnboardingTour />);
+    act(() => { textOfButton(container, 'Finish')!.click(); });
+    expect(localStorage.getItem(FLAG_KEY)).toBe('true');
+    expect(nextStep).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it('persists the flag when the Skip button is clicked', () => {
+    mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
+    const { container, cleanup } = render(<OnboardingTour />);
+    act(() => { textOfButton(container, 'Skip')!.click(); });
+    expect(localStorage.getItem(FLAG_KEY)).toBe('true');
+    expect(skip).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it('persists the flag when the modal is closed via Escape', () => {
+    mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
+    const { cleanup } = render(<OnboardingTour />);
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(localStorage.getItem(FLAG_KEY)).toBe('true');
+    expect(skip).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it('does not persist the flag on a non-final Next click', () => {
+    mockOnboarding({ isActive: true, currentStepIndex: 0, currentStep: ONBOARDING_STEPS[0] });
+    const { container, cleanup } = render(<OnboardingTour />);
+    act(() => { textOfButton(container, 'Next')!.click(); });
+    expect(localStorage.getItem(FLAG_KEY)).toBeNull();
     expect(nextStep).toHaveBeenCalledOnce();
     cleanup();
   });
