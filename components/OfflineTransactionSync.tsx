@@ -5,6 +5,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import {
   OFFLINE_QUEUE_STORAGE_KEY,
   flushQueuedTransactions,
+  queuedDraftsLabel,
   queuedTransactions,
   startOnlineSync,
   stopOnlineSync,
@@ -63,6 +64,9 @@ export function OfflineTransactionSync() {
 
   if (queuedCount === 0 && !showRetryPrompt) return null;
 
+  const label = queuedDraftsLabel(queuedCount);
+  const words = label.slice(label.indexOf(' ') + 1);
+
   return (
     <div
       className="fixed top-4 right-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-xs px-3 py-2 rounded shadow-lg z-50"
@@ -72,7 +76,9 @@ export function OfflineTransactionSync() {
       {showRetryPrompt ? (
         <span>Connection restored. Retrying {queuedCount} queued transaction{queuedCount === 1 ? '' : 's'}…</span>
       ) : (
-        <span>{queuedCount} transaction{queuedCount === 1 ? '' : 's'} queued for retry</span>
+        <>
+          <span>{queuedCount}</span> <span>{words}</span>
+        </>
       )}
     </div>
   );
