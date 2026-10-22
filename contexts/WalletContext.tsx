@@ -2,11 +2,12 @@
 /**
  * WalletContext — Stellar wallet connection state.
  *
- * Wraps @stellar/freighter-api. Freighter-only (not a multi-wallet kit) —
+ * Wraps @stellar/freighter-api, plus Ledger hardware wallets over WebHID
+ * (#792, see lib/ledger-wallet.ts). Not a multi-wallet kit —
  * @creit.tech/stellar-wallets-kit was considered but its `dependencies`
  * unconditionally pull in Ledger/Trezor/WalletConnect/a NEAR Protocol SDK,
  * ~300 extra packages and 36 vulnerabilities for functionality this app
- * doesn't need.
+ * doesn't need. The Ledger libraries are lazy-loaded on first use only.
  *
  * Concurrency & Atomic State:
  * ────────────────────────────
@@ -47,6 +48,14 @@ import {
 } from '@/lib/wallet-storage';
 import { resetServer, resetCircuitBreaker } from '@/lib/soroban';
 import { clearIdempotencyKeys } from '@/lib/safe-operations';
+import {
+  LEDGER_WALLET_ID,
+  LEDGER_WALLET_NAME,
+  closeLedger,
+  connectLedger,
+  onLedgerDisconnect,
+  signWithLedger,
+} from '@/lib/ledger-wallet';
 import toast from 'react-hot-toast';
 
 // ── Concurrency Primitives ───────────────────────────────────────────────────
@@ -252,6 +261,12 @@ const DEFAULT_MAX_CONCURRENT_OPS = 5;
 const WALLET_CONNECT_TIMEOUT_MS = 15_000;
 
 /**
+ * Ledger signing waits for the user to review every operation on the device
+ * screen, which routinely takes longer than an extension popup click.
+ */
+const LEDGER_SIGN_TIMEOUT_MS = 120_000;
+
+/**
  * Timeout message for wallet calls. This one reaches the user directly
  * (ConnectButton renders it), so it stays wallet-specific rather than using
  * the shared helper's default `… timed out after 15000ms` (#393).
@@ -286,7 +301,11 @@ export interface WalletState {
   pendingOperationCount: number;
   /** Maximum concurrent signing operations allowed */
   maxConcurrentOperations: number;
-  connect:     () => Promise<void>;
+  /**
+   * Connect a wallet. `walletId` selects the provider — `'ledger'` connects a
+   * Ledger over WebHID; anything else (or omitted) uses Freighter.
+   */
+  connect:     (walletId?: string) => Promise<void>;
   disconnect:  () => void;
   /**
    * Sign a base64-encoded XDR transaction and return the signed XDR.
@@ -335,6 +354,12 @@ export function WalletProvider({
   useEffect(() => {
     publicKeyRef.current = publicKey;
   }, [publicKey]);
+
+  // Same for `walletName` — the watcher and signTx route on it.
+  const walletNameRef = useRef<string | null>(null);
+  useEffect(() => {
+    walletNameRef.current = walletName;
+  }, [walletName]);
 
   // Access the Zustand store's reset action outside of a component render
   const clearTransactions = useTransactionStore((s) => s.clearTransactions);
@@ -423,7 +448,7 @@ export function WalletProvider({
 
   // ── connect ────────────────────────────────────────────────────────────────
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (walletId?: string) => {
     const requestId = ++pendingRequestIdRef.current;
 
     // A newer connect() call supersedes whatever's still waiting in the
@@ -455,6 +480,24 @@ export function WalletProvider({
 
       // Create a fresh AbortController for this connection cycle
       abortControllerRef.current = new AbortController();
+
+      if (walletId === LEDGER_WALLET_ID) {
+        // No timeout around the device picker — the user may take a while to
+        // plug in / unlock. connectLedger throws a LedgerError with a
+        // user-facing message for cancel / locked / app-not-open / unplugged.
+        const address = await connectLedger();
+        if (requestId !== pendingRequestIdRef.current || !isMountedRef.current) {
+          void closeLedger();
+          return;
+        }
+        // Ledger holds no network setting — the passphrase is supplied by the
+        // app at signing time, so there is nothing to cross-check here.
+        walletNameRef.current = LEDGER_WALLET_NAME;
+        setPublicKey(address);
+        setWalletName(LEDGER_WALLET_NAME);
+        saveWalletSession({ key: address, name: LEDGER_WALLET_NAME });
+        return;
+      }
 
       const { isConnected: hasFreighter } = await withTimeout(
         freighterIsConnected(),
@@ -500,9 +543,12 @@ export function WalletProvider({
         );
       }
 
+      walletNameRef.current = 'Freighter';
       setPublicKey(address);
       setWalletName('Freighter');
       saveWalletSession({ key: address, name: 'Freighter' });
+      // Switching from a Ledger session to Freighter — release the device.
+      void closeLedger();
     } catch (error) {
       clearConnectingState();
       throw error;
@@ -520,6 +566,8 @@ export function WalletProvider({
     setConnecting(false);
     setPublicKey(null);
     setWalletName(null);
+    walletNameRef.current = null;
+    void closeLedger();
 
     // Purge the wallet session only — a blanket clear() previously wiped
     // unrelated storage (e.g. the theme preference) on every disconnect (#237).
@@ -541,6 +589,21 @@ export function WalletProvider({
     router.push('/');
   }, [clearTransactions, router]);
 
+  // ── Ledger disconnect watcher ──────────────────────────────────────────────
+
+  // Unplugging the Ledger (or the browser revoking the HID handle) drops the
+  // transport. Tear the session down like an explicit Disconnect so the app
+  // never shows an account it can no longer sign for.
+  useEffect(() => {
+    onLedgerDisconnect(() => {
+      if (!isMountedRef.current) return;
+      if (walletNameRef.current !== LEDGER_WALLET_NAME || !publicKeyRef.current) return;
+      toast.error('Wallet disconnected — your Ledger was unplugged or closed.');
+      disconnect();
+    });
+    return () => onLedgerDisconnect(null);
+  }, [disconnect]);
+
   // ── external wallet-change watcher ─────────────────────────────────────────
 
   // Freighter reports address/network changes only through this poll-based
@@ -561,6 +624,9 @@ export function WalletProvider({
     watcher.watch(({ address, networkPassphrase }) => {
       if (!active || !isMountedRef.current) return;
       if (!publicKeyRef.current) return; // no active session to keep in sync
+      // Freighter's view of the world is irrelevant to a Ledger session — a
+      // locked/absent extension must not tear down the hardware wallet.
+      if (walletNameRef.current === LEDGER_WALLET_NAME) return;
 
       if (!address) {
         // Extension locked or app access revoked underneath us — the
@@ -643,6 +709,22 @@ export function WalletProvider({
 
           const requestId = pendingRequestIdRef.current;
           const currentPublicKey = publicKeyRef.current;
+
+          if (walletNameRef.current === LEDGER_WALLET_NAME && currentPublicKey) {
+            const signedXdr = await withTimeout(
+              signWithLedger(xdr, getNetworkPassphrase(), currentPublicKey),
+              LEDGER_SIGN_TIMEOUT_MS,
+              { label: 'Ledger signing', onTimeout: walletTimeoutError },
+            );
+            if (combinedSignal.aborted) {
+              throw new Error('Operation aborted');
+            }
+            if (requestId !== pendingRequestIdRef.current || currentPublicKey !== publicKeyRef.current) {
+              throw new Error('Wallet state changed during signing. Please retry the operation.');
+            }
+            return signedXdr;
+          }
+
           const { signedTxXdr, error } = await withTimeout(
             signTransaction(xdr, {
               networkPassphrase: getNetworkPassphrase(),

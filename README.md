@@ -73,7 +73,7 @@ transaction against the configured RPC end-to-end today.
 |------|---------|
 | Node.js | ≥ 20 |
 | npm | ≥ 10 |
-| A Stellar-compatible wallet | Freighter, xBull, Albedo, etc. |
+| A Stellar-compatible wallet | Freighter, xBull, Albedo, Ledger (via WebHID), etc. |
 
 ---
 
