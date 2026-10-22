@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { queuedTransactions } from '@/lib/offline-transactions';
 
 interface OfflineIndicatorProps {
@@ -18,6 +18,21 @@ interface OfflineIndicatorProps {
 export function OfflineIndicator({ className = '', isSigning = false }: OfflineIndicatorProps) {
   const [isOnline, setIsOnline] = useState(true);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+
+  // #794 — Ping Horizon to manually test connectivity
+  const handleRetry = useCallback(async () => {
+    setRetrying(true);
+    try {
+      const horizonUrl = process.env.NEXT_PUBLIC_HORIZON_URL ?? 'https://horizon-testnet.stellar.org';
+      await fetch(horizonUrl, { method: 'HEAD', cache: 'no-store' });
+      setIsOnline(true);
+    } catch {
+      setIsOnline(false);
+    } finally {
+      setRetrying(false);
+    }
+  }, []);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -78,7 +93,16 @@ export function OfflineIndicator({ className = '', isSigning = false }: OfflineI
       aria-live="polite"
       aria-label="Offline status"
     >
-      You are currently offline. Cached data is shown; {queueMessage}
+      <span>You are currently offline. Cached data is shown; {queueMessage}</span>
+      <button
+        type="button"
+        onClick={handleRetry}
+        disabled={retrying}
+        aria-label="Retry connection"
+        className="ml-2 underline disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {retrying ? 'Retrying…' : 'Retry Connection'}
+      </button>
     </div>
   );
 }
