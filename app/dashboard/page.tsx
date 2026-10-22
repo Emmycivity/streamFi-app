@@ -11,6 +11,7 @@ import { StreamCardSkeleton } from "@/components/stream/StreamCardSkeleton";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { BulkWithdrawButton } from "@/components/stream/BulkWithdrawButton";
 import { EndingSoonWidget } from "@/components/dashboard/EndingSoonWidget";
+import { KpiCards } from "@/components/dashboard/KpiCards";
 import { streamsBySender, streamsByRecipient } from "@/lib/factory";
 import {
   getStreamAddress,
@@ -436,33 +437,17 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
-            {DATE_RANGE_PRESETS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          {rangePreset === "custom" && (
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                aria-label="Range start"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="border-gray-300 dark:border-gray-700 border py-1 px-2 text-sm rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-              />
-              <span className="text-xs text-gray-400">{t("rangeTo")}</span>
-              <input
-                type="date"
-                aria-label="Range end"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="border-gray-300 dark:border-gray-700 border py-1 px-2 text-sm rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm"
-              />
-            </div>
-          )}
-        </div>
-      )}
+      {/* Summary KPI cards (#685) — headline aggregates above the smaller
+          per-metric stat grid: total capital streamed and combined burn rate. */}
+      <KpiCards
+        totalValueStreamed={totalValueStreamed}
+        activeRunRate={activeRunRate}
+        activeStreamCount={activeStreams.length}
+        totalStreamCount={allStreams.length}
+        connected={connected}
+        loading={loading}
+        error={!!error}
+      />
 
       {/* Aggregate stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-10">

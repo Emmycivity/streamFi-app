@@ -382,7 +382,18 @@ describe("DashboardPage — heavy load initialization", () => {
     });
 
     expect(container.textContent).toContain("Active streams");
-    expect(container.textContent).toContain("Receiving /s");
+    // Label was renamed receivingPerSecond → activeRunRate in the locales;
+    // the old "Receiving /s" expectation predated that rename.
+    expect(container.textContent).toContain("Active run rate");
+    // #685 — the dedicated summary KPI cards sit above the stat grid.
+    expect(
+      container.querySelector('[data-testid="kpi-cards"]'),
+    ).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid="kpi-active-run-rate"]')
+        ?.textContent,
+    ).toContain("/ hour");
     cleanupDashboard(root, container);
   });
 

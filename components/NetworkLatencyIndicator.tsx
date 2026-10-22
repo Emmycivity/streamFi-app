@@ -8,6 +8,20 @@ interface LatencyState {
   latencyMs: number | null;
   ledgerHeight: number | null;
   status: 'green' | 'amber' | 'neutral' | 'offline' | 'loading';
+  /** Host:port of the probed endpoint — shown in the tooltip (#796). */
+  endpoint: string | null;
+  /** Epoch ms of the most recent probe, success or failure (#796). */
+  lastCheckedAt: number | null;
+}
+
+/** Host:port of the probed URL so the tooltip can say exactly which
+ *  endpoint the round-trip timing was measured against (#796). */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 export function NetworkLatencyIndicator() {
@@ -15,6 +29,8 @@ export function NetworkLatencyIndicator() {
     latencyMs: null,
     ledgerHeight: null,
     status: 'loading',
+    endpoint: null,
+    lastCheckedAt: null,
   });
 
   useEffect(() => {
@@ -60,10 +76,22 @@ export function NetworkLatencyIndicator() {
           status = 'amber';
         }
 
-        setState({ latencyMs, ledgerHeight, status });
+        setState({
+          latencyMs,
+          ledgerHeight,
+          status,
+          endpoint: hostOf(rpcUrl),
+          lastCheckedAt: Date.now(),
+        });
       } catch {
         if (cancelled) return;
-        setState({ latencyMs: null, ledgerHeight: null, status: 'offline' });
+        setState({
+          latencyMs: null,
+          ledgerHeight: null,
+          status: 'offline',
+          endpoint: hostOf(rpcUrl),
+          lastCheckedAt: Date.now(),
+        });
       }
     };
 
@@ -116,16 +144,15 @@ export function NetworkLatencyIndicator() {
     );
 
   return (
-    <Tooltip content={tooltipContent} side="bottom">
+    // `group` + focusable pill so the detailed tooltip (#796) is revealed on
+    // hover and on keyboard focus — the native title attribute alone gave no
+    // room for the numeric round-trip metrics engineers need.
+    <span className="relative group inline-block">
       <span
         className={`latency-pill inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[11px] font-medium transition-colors ${colorStyles}`}
-        aria-label={
-          state.status === 'offline'
-            ? 'RPC unreachable'
-            : state.ledgerHeight
-              ? `Latency: ${state.latencyMs}ms | Ledger #${state.ledgerHeight}`
-              : `Latency: ${state.latencyMs}ms`
-        }
+        tabIndex={0}
+        aria-label={tooltip}
+        data-testid="network-latency-pill"
       >
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotColors}`}
@@ -142,6 +169,31 @@ export function NetworkLatencyIndicator() {
           </>
         )}
       </span>
-    </Tooltip>
+      <span
+        role="tooltip"
+        data-testid="network-latency-tooltip"
+        className="invisible absolute left-0 top-full z-50 mt-1.5 w-60 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 text-left text-[11px] font-normal normal-case leading-relaxed text-gray-600 shadow-lg opacity-0 transition-opacity dark:text-gray-300 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+      >
+        <span className="block font-semibold text-black dark:text-white">
+          {state.status === 'offline'
+            ? 'Horizon RPC unreachable'
+            : `Horizon RPC response time: ${state.latencyMs} ms`}
+        </span>
+        {state.endpoint && (
+          <span className="mt-1 block break-all">Endpoint: {state.endpoint}</span>
+        )}
+        {state.ledgerHeight !== null && (
+          <span className="block">Ledger: #{state.ledgerHeight}</span>
+        )}
+        {state.lastCheckedAt !== null && (
+          <span className="block">
+            Last checked: {new Date(state.lastCheckedAt).toLocaleTimeString()}
+          </span>
+        )}
+        <span className="mt-1 block text-gray-400 dark:text-gray-500">
+          Healthy &lt; 500 ms · Slow &gt; 2000 ms · Polled every 10 s
+        </span>
+      </span>
+    </span>
   );
 }
