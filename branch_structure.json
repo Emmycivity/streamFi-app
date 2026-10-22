@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "fix/issue-793-components-connectbutton-tsx-display-warning",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "fix/issue-793-components-connectbutton-tsx-display-warning": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "fix/issue-793-components-connectbutton-tsx-display-warning",
+    "origin"
+  ]
+}
