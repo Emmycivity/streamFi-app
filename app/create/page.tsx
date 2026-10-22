@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter }        from 'next/navigation';
 import { useForm }          from 'react-hook-form';
 import { zodResolver }      from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ import { getFactoryContractId } from '@/lib/env';
 import { getTokenAllowanceGateway } from '@/lib/token-allowance-gateway';
 import { useDebounce } from '@/hooks/useDebounce';
 import { FeePreview } from '@/components/stream/FeePreview';
+import { StreamPreviewChart } from '@/components/stream/StreamPreviewChart';
 import styles from './CreateStream.module.css';
 import { toStroops, fromStroops, wouldRateTruncateToZero } from '@/lib/format';
 import { isValidStellarAddress, isValidStellarContract, isValidStellarPublicKey } from '@/lib/stellar-address';
@@ -800,6 +801,18 @@ export default function CreatePage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* Interactive projected accrual chart (#684) — cliff unlock jump +
+            linear rate slope, so the sender sees the schedule before funding. */}
+        {deposit && duration && (
+          <StreamPreviewChart
+            depositAmount={deposit}
+            durationSeconds={duration}
+            cliffDate={cliffDateValue || null}
+            tokenSymbol={token}
+            decimals={tokenDecimals}
+          />
         )}
 
         {/* Fee preview (#721) — live breakdown of network fees and protocol bps */}
